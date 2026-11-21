@@ -14,6 +14,7 @@ const items = [
   ["/client/posts", "Studio Posts", "M4 16l4-4a3 3 0 014 0l4 4m-2-2 1-1a3 3 0 014 0l1 1M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"],
   ["/client/book", "Book a Session", "M12 4v16m8-8H4"],
   ["/client/bookings", "My Bookings", "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"],
+  ["/client/photo-status", "My Photo Status", "M3 7h3l2-3h8l2 3h3v13H3V7zm9 3a4 4 0 100 8 4 4 0 000-8z"],
   ["/client/payments", "My Payments", "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"],
   ["/client/feedback", "Feedback", "M11.049 2.927l1.519 4.674h4.915l-3.976 2.888 1.519 4.674L12 12.275 8.974 15.163l1.519-4.674L6.517 7.601h4.915l1.519-4.674z"],
   ["/client/profile", "My Profile", "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"],

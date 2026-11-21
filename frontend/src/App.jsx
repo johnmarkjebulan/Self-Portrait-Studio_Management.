@@ -16,6 +16,7 @@ import ClientDashboard from "./pages/client/Dashboard";
 import Book from "./pages/client/Book";
 import ClientAppointments from "./pages/client/Appointments";
 import ClientBookings from "./pages/client/Bookings";
+import ClientPhotoStatus from "./pages/client/PhotoStatus";
 import ClientPayments from "./pages/client/Payments";
 import ClientNotifications from "./pages/client/Notifications";
 import ClientFeedback from "./pages/client/Feedback";
@@ -59,6 +60,7 @@ export default function App() {
       <Route path="/client/book" element={<Book />} />
       <Route path="/client/appointments" element={<ClientAppointments />} />
       <Route path="/client/bookings" element={<ClientBookings />} />
+      <Route path="/client/photo-status" element={<ClientPhotoStatus />} />
       <Route path="/client/payments" element={<ClientPayments />} />
       <Route path="/client/notifications" element={<ClientNotifications />} />
       <Route path="/client/feedback" element={<ClientFeedback />} />

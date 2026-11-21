@@ -205,6 +205,12 @@ export const photoWorkflowApi = {
 
 // WBS 3.3.2: private Client payment submission and history.
 // The original /payments endpoints remain Admin/Staff-only.
+// WBS 3.3.3: Client-owned, read-only photo stage and release information.
+export const clientPhotoStatusApi = {
+  getAll: () => req('GET', '/client/photo-status').then(r => r.photoStatuses || []),
+  find: (id) => req('GET', `/client/photo-status/${encodeURIComponent(id)}`).then(r => r.photoStatus),
+};
+
 export const clientPaymentsApi = {
   getAll: () => req('GET', '/client/payments').then(r => (r.payments || []).map(normalizePayment)),
   create: (data) => {
