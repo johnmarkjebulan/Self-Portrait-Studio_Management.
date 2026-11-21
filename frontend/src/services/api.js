@@ -288,7 +288,7 @@ export const usersApi = {
 
 
 export const postsApi = {
-  getPublic: () => req('GET', '/posts/public').then((r) => r.posts),
+  getPublic: () => req('GET', '/client/posts/public').then((r) => r.posts),
   getAll: () => req('GET', '/posts').then((r) => r.posts),
   create: (data) => req('POST', '/posts', data).then((r) => r.post),
   update: (id, data) => req('PATCH', `/posts/${id}`, data).then((r) => r.post),
@@ -317,3 +317,17 @@ export const publicStatsApi = {
 
 export const analyticsApi = { get: (range = 'month') => req('GET', `/analytics?range=${encodeURIComponent(range)}`) };
 export const activityLogsApi = { getAll: () => req('GET', '/activity-logs').then((r) => r.logs || []) };
+
+// WBS 3.4.1: Client-only published posts, likes, notifications and read state.
+// Shared Admin/Staff-only APIs above are intentionally unchanged.
+export const clientPostsApi = {
+  getAll: () => req('GET', '/client/posts').then(r => r.posts || []),
+  toggleLike: (id) => req('POST', `/client/posts/${encodeURIComponent(id)}/like`),
+};
+
+export const clientNotificationsApi = {
+  getAll: (limit) => req('GET', `/client/notifications${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`).then(r => r.notifications || []),
+  getUnreadCount: () => req('GET', '/client/notifications/unread-count').then(r => Number(r.count || 0)),
+  markRead: (id) => req('PATCH', `/client/notifications/${encodeURIComponent(id)}/read`),
+  markAllRead: () => req('POST', '/client/notifications/mark-all-read'),
+};
