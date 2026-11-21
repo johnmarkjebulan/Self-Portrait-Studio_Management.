@@ -1,6 +1,7 @@
-// Admin/Staff API registrations only. Client routes will be integrated later.
+// Shared Admin/Staff routes plus independently scoped Client account operations.
 const router = require('express').Router();
 router.use('/auth', require('./auth'));
+router.use('/client/account', require('./client-account'));
 router.use('/users', require('./users'));
 router.use('/packages', require('./packages'));
 router.use('/appointments', require('./appointments'));
