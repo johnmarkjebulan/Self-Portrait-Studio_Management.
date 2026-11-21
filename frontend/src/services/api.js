@@ -203,6 +203,36 @@ export const photoWorkflowApi = {
   details: (id, data) => req('PATCH', `/photo-workflows/${encodeURIComponent(id)}/details`, data).then((r) => r.workflow),
 };
 
+// WBS 3.3.2: private Client payment submission and history.
+// The original /payments endpoints remain Admin/Staff-only.
+export const clientPaymentsApi = {
+  getAll: () => req('GET', '/client/payments').then(r => (r.payments || []).map(normalizePayment)),
+  create: (data) => {
+    const form = new FormData();
+    form.append('appointment_id', data.appointment_id);
+    form.append('amount', String(data.amount));
+    form.append('reference_number', data.reference_number);
+    form.append('payment_date', data.payment_date);
+    form.append('proof', data.proof);
+    return req('POST', '/client/payments', form).then(r => normalizePayment(r.payment));
+  },
+  getProof: async (id) => {
+    let response;
+    try {
+      const token = getToken();
+      response = await fetch(`${BASE}/client/payments/${encodeURIComponent(id)}/proof`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+    } catch { throw new ApiError('Cannot connect to the payment proof server.', 0, null); }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new ApiError(payload.error || 'Payment proof unavailable.', response.status, payload);
+    }
+    return response.blob();
+  },
+};
+
 export const paymentsApi = {
   getAll: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
