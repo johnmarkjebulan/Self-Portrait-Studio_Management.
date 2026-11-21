@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { postsApi } from "../../services/api";
+import { clientPostsApi } from "../../services/api";
 import { useToast } from "../../contexts/ToastContext";
 
 function formatDate(value) {
@@ -12,10 +12,14 @@ export default function ClientPosts() {
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
   const [liking, setLiking] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    postsApi.getAll().then(setPosts).catch((e)=>toast(e.message || "Could not load posts.", "error")).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    setLoadError("");
+    clientPostsApi.getAll().then(setPosts).catch((e) => { setLoadError(e.message || "Could not load posts."); toast(e.message || "Could not load posts.", "error"); }).finally(() => setLoading(false));
+  }, [reload]);
 
   useEffect(() => {
     if (!preview) return;
@@ -28,7 +32,7 @@ export default function ClientPosts() {
   async function toggleLike(post) {
     try {
       setLiking(post.id);
-      const result = await postsApi.toggleLike(post.id);
+      const result = await clientPostsApi.toggleLike(post.id);
       setPosts((items) => items.map((item) => item.id === post.id ? { ...item, liked_by_me: result.liked, like_count: result.like_count } : item));
     } catch (e) { toast(e.message || "Could not update like.", "error"); }
     finally { setLiking(null); }
@@ -40,7 +44,12 @@ export default function ClientPosts() {
         <h1 className="text-2xl font-semibold text-gray-900">Studio Posts</h1>
         <p className="text-sm text-gray-500 mt-1">Latest portraits, announcements, promos, and photo highlights posted by the studio owner.</p>
       </div>
-      {loading ? <div className="text-sm text-gray-400 py-12 text-center">Loading posts…</div> : posts.length === 0 ? (
+      {loading ? <div className="text-sm text-gray-400 py-12 text-center" role="status">Loading posts…</div> : loadError ? (
+        <div className="bg-white rounded-2xl p-8 border border-gray-200 text-center">
+          <p className="text-sm text-red-600" role="alert">{loadError}</p>
+          <button type="button" onClick={() => setReload(v => v + 1)} className="mt-4 px-5 py-2 rounded-xl bg-gray-900 text-white text-sm">Try again</button>
+        </div>
+      ) : posts.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500">No studio posts yet.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

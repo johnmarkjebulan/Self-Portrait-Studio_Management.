@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { notificationsApi } from "../../services/api";
+import { notificationsApi, clientNotificationsApi } from "../../services/api";
 import { notificationLink } from "../../utils/notificationLink";
 
 function timeAgo(iso) {
@@ -16,6 +16,7 @@ function timeAgo(iso) {
 
 export default function NotificationBell({ role = "client" }) {
   const navigate = useNavigate();
+  const activeNotificationsApi = role === "client" ? clientNotificationsApi : notificationsApi;
   const ref = useRef(null);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -24,8 +25,8 @@ export default function NotificationBell({ role = "client" }) {
   const load = async () => {
     try {
       const [count, notifications] = await Promise.all([
-        notificationsApi.getUnreadCount(),
-        notificationsApi.getAll(6),
+        activeNotificationsApi.getUnreadCount(),
+        activeNotificationsApi.getAll(6),
       ]);
       setUnread(Number(count || 0));
       setItems(notifications || []);
@@ -38,7 +39,7 @@ export default function NotificationBell({ role = "client" }) {
     load();
     const timer = setInterval(load, 30000);
     return () => clearInterval(timer);
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     const close = (event) => {
@@ -50,7 +51,7 @@ export default function NotificationBell({ role = "client" }) {
 
   const openNotification = async (item) => {
     try {
-      if (!item.read) await notificationsApi.markRead(item.id);
+      if (!item.read) await activeNotificationsApi.markRead(item.id);
     } catch (err) {
       console.error(err);
     }
@@ -61,7 +62,7 @@ export default function NotificationBell({ role = "client" }) {
 
   const markAll = async () => {
     try {
-      await notificationsApi.markAllRead();
+      await activeNotificationsApi.markAllRead();
       setUnread(0);
       setItems((current) => current.map((item) => ({ ...item, read: true })));
     } catch (err) {
@@ -117,6 +118,12 @@ export default function NotificationBell({ role = "client" }) {
               </button>
             ))}
           </div>
+          {role === "client" && (
+            <button type="button" onClick={() => { setOpen(false); navigate("/client/notifications"); }}
+              className="w-full px-4 py-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 border-t border-gray-100">
+              View all notifications
+            </button>
+          )}
         </div>
       )}
     </div>
