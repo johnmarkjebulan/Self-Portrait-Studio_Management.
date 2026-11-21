@@ -14,6 +14,7 @@ router.use('/payments', require('./payments'));
 router.use('/notifications', require('./notifications'));
 router.use('/client/notifications', require('./client-notifications'));
 router.use('/feedback', require('./feedback'));
+router.use('/client/feedback', require('./client-feedback'));
 router.use('/posts', require('./posts'));
 router.use('/client/posts', require('./client-posts'));
 router.use('/settings', require('./settings'));
