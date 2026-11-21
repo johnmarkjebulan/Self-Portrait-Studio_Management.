@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { appointmentsApi, paymentsApi } from "../../services/api";
+import { clientAppointmentsApi, clientPaymentsApi } from "../../services/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { studioToday } from "../../utils/date";
 import StudioPaymentQR from "../../components/common/StudioPaymentQR";
@@ -18,14 +18,17 @@ export default function ClientPayments() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const fileRef = useRef(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview?.url]);
 
   const load = async () => {
     if (!user) { setLoading(false); return; }
     setLoading(true);
     setLoadError("");
     const [appointmentResult, paymentResult] = await Promise.allSettled([
-      appointmentsApi.getAll(),
-      paymentsApi.getAll(),
+      clientAppointmentsApi.getAll(),
+      clientPaymentsApi.getAll(),
     ]);
     const problems = [];
     if (appointmentResult.status === "fulfilled") {
@@ -47,21 +50,28 @@ export default function ClientPayments() {
 
   useEffect(() => { load(); }, [user]);
 
+  const pendingByAppointment = payments.reduce((map, payment) => {
+    if (["payment_submitted", "under_verification"].includes(payment.status)) {
+      map[payment.appointment_id] = (map[payment.appointment_id] || 0) + Number(payment.amount || 0);
+    }
+    return map;
+  }, {});
+  const outstanding = (appointment) => Math.max(0, Math.round((Number(appointment.remaining_balance || 0) - (pendingByAppointment[appointment.id] || 0)) * 100) / 100);
   const payable = appointments.filter(
-    (a) => !["cancelled", "no_show", "completed"].includes(a.status) && a.remaining_balance > 0
+    (a) => !["cancelled", "rejected", "no_show"].includes(a.status) && outstanding(a) > 0
   );
 
   const validate = () => {
     const e = {};
     if (!selectedAppt) e.appt = "Select an appointment.";
-    const amt = parseFloat(form.amount);
-    if (!form.amount || isNaN(amt) || amt <= 0) e.amount = "Enter a valid payment amount.";
-    else if (selectedAppt && amt > selectedAppt.remaining_balance)
-      e.amount = `Amount exceeds remaining balance of ₱${selectedAppt.remaining_balance.toLocaleString()}.`;
-    if (!form.reference.trim()) e.reference = "Reference number is required.";
-    if (!form.payment_date) e.payment_date = "Payment date is required.";
+    const amt = Number(form.amount);
+    if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(form.amount) || !Number.isFinite(amt) || amt <= 0) e.amount = "Enter an amount with up to two decimals.";
+    else if (selectedAppt && amt > outstanding(selectedAppt))
+      e.amount = `Amount exceeds available balance of ₱${outstanding(selectedAppt).toLocaleString()}.`;
+    if (!form.reference.trim() || form.reference.trim().length > 100) e.reference = "Enter a reference number (maximum 100 characters).";
+    if (!form.payment_date || form.payment_date > studioToday()) e.payment_date = "Choose a valid payment date, not in the future.";
     if (!form.proof) e.proof = "Payment proof is required.";
-    else if (form.proof.size > 5 * 1024 * 1024) e.proof = "Payment proof must be 5 MB or smaller.";
+    else if (form.proof.size > 5 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(form.proof.type)) e.proof = "Use a JPG, PNG or WEBP image, max 5 MB.";
     return e;
   };
 
@@ -73,18 +83,12 @@ export default function ClientPayments() {
     setSubmitting(true);
 
     try {
-      const amt = parseFloat(form.amount);
-      const isFullPayment = amt >= selectedAppt.remaining_balance;
-
-      await paymentsApi.create({
+      await clientPaymentsApi.create({
         appointment_id: selectedAppt.id,
-        client_id: user.id,
-        amount: amt,
-        type: selectedAppt.amount_paid === 0 ? "down_payment" : isFullPayment ? "full" : "partial",
-        reference_number: form.reference,
+        amount: form.amount,
+        reference_number: form.reference.trim(),
         payment_date: form.payment_date,
         proof: form.proof,
-        status: "payment_submitted",
       });
 
       toast("Payment proof submitted! Awaiting admin verification.", "success");
@@ -98,6 +102,17 @@ export default function ClientPayments() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const viewReceipt = async (payment) => {
+    if (previewLoading) return;
+    setPreviewLoading(true);
+    try {
+      const blob = await clientPaymentsApi.getProof(payment.id);
+      if (!["image/jpeg", "image/png", "image/webp"].includes(blob.type)) throw new Error("Receipt image format not supported.");
+      setPreview({ url: URL.createObjectURL(blob), payment });
+    } catch (err) { toast(err.message || "Receipt unavailable.", "error"); }
+    finally { setPreviewLoading(false); }
   };
 
   if (loading) {
@@ -136,7 +151,7 @@ export default function ClientPayments() {
                   onChange={(e) => {
                     const a = appointments.find((a) => a.id === e.target.value);
                     setSelectedAppt(a || null);
-                    setForm((f) => ({ ...f, amount: a ? String(a.remaining_balance) : "" }));
+                    setForm((f) => ({ ...f, amount: a ? String(outstanding(a)) : "" }));
                     setErrors({});
                   }}
                   className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
@@ -144,7 +159,7 @@ export default function ClientPayments() {
                   <option value="">— Select appointment —</option>
                   {payable.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.tracking_number} · ₱{a.remaining_balance.toLocaleString()} balance
+                      {a.tracking_number} · ₱{outstanding(a).toLocaleString()} available to submit
                     </option>
                   ))}
                 </select>
@@ -162,9 +177,13 @@ export default function ClientPayments() {
                   <span className="text-gray-500">Paid</span>
                   <span className="text-emerald-600 font-mono">₱{selectedAppt.amount_paid.toLocaleString()}</span>
                 </div>
+                <div className="flex justify-between mb-1.5">
+                  <span className="text-gray-500">Awaiting verification</span>
+                  <span className="text-amber-700 font-mono">₱{Number(pendingByAppointment[selectedAppt.id] || 0).toLocaleString()}</span>
+                </div>
                 <div className="flex justify-between font-semibold pt-1.5 border-t border-gray-200">
-                  <span className="text-gray-700">Balance</span>
-                  <span className="text-gray-900 font-mono">₱{selectedAppt.remaining_balance.toLocaleString()}</span>
+                  <span className="text-gray-700">Available to submit</span>
+                  <span className="text-gray-900 font-mono">₱{outstanding(selectedAppt).toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -176,7 +195,8 @@ export default function ClientPayments() {
                 value={form.amount}
                 onChange={(e) => { setForm((f) => ({ ...f, amount: e.target.value })); setErrors({}); }}
                 placeholder="0.00"
-                min="1"
+                min="0.01"
+                step="0.01"
                 className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 placeholder:text-gray-400 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
               />
               {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
@@ -189,6 +209,7 @@ export default function ClientPayments() {
                 value={form.reference}
                 onChange={(e) => { setForm((f) => ({ ...f, reference: e.target.value })); setErrors({}); }}
                 placeholder="TXN1234567890"
+                maxLength={100}
                 className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 placeholder:text-gray-400 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
               />
               {errors.reference && <p className="text-red-500 text-xs mt-1">{errors.reference}</p>}
@@ -275,7 +296,7 @@ export default function ClientPayments() {
           <div className="mt-5 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
             <p className="text-yellow-700 text-xs font-semibold mb-1">Important Notice</p>
             <p className="text-gray-500 text-xs leading-relaxed">
-              Uploading a receipt does NOT automatically verify your payment. An admin will manually review your submission within 24 hours.
+              Uploading a receipt does NOT verify your payment automatically. The studio Admin will review it. Please keep the original transaction receipt.
             </p>
           </div>
         </div>
@@ -294,7 +315,7 @@ export default function ClientPayments() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {["Appointment", "Amount", "Reference", "Date", "Status"].map((h) => (
+                    {["Appointment", "Amount", "Reference", "Date", "Status", "Proof"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-gray-500 text-xs uppercase tracking-wider py-3 px-4 font-medium first:pl-5 last:pr-5"
@@ -310,13 +331,17 @@ export default function ClientPayments() {
                     return (
                       <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="py-3.5 pl-5 pr-4 tracking-number text-gray-900 text-xs font-semibold">
-                          {appt?.tracking_number || "—"}
+                          {p.appointment?.tracking_number || appt?.tracking_number || "—"}
                         </td>
                         <td className="py-3.5 pr-4 font-mono text-gray-900">₱{p.amount.toLocaleString()}</td>
                         <td className="py-3.5 pr-4 text-gray-500 font-mono text-xs">{p.reference_number}</td>
                         <td className="py-3.5 pr-4 text-gray-500 text-xs">{p.payment_date}</td>
-                        <td className="py-3.5 pr-5">
+                        <td className="py-3.5 pr-4">
                           <StatusBadge status={p.status} />
+                          {p.status === "rejected" && p.notes && <p className="text-red-600 text-xs mt-1 break-words max-w-52">{p.notes}</p>}
+                        </td>
+                        <td className="py-3.5 pr-5">
+                          {p.has_proof ? <button type="button" disabled={previewLoading} onClick={() => viewReceipt(p)} className="text-gray-900 underline underline-offset-2 text-xs font-semibold disabled:opacity-50">View receipt</button> : <span className="text-gray-400 text-xs">Not available</span>}
                         </td>
                       </tr>
                     );
@@ -327,6 +352,12 @@ export default function ClientPayments() {
           </div>
         )}
       </div>
+      {preview && <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Your uploaded payment proof" onClick={() => setPreview(null)}>
+        <div className="bg-white max-w-xl w-full rounded-2xl p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-between items-center mb-3 gap-3"><p className="text-gray-900 text-sm font-semibold">Receipt · {preview.payment.reference_number}</p><button type="button" onClick={() => setPreview(null)} className="rounded-lg px-3 py-2 border border-gray-200 text-sm">Close</button></div>
+          <img src={preview.url} alt="Your uploaded payment receipt" className="w-full max-h-[70vh] object-contain rounded-lg" />
+        </div>
+      </div>}
     </div>
   );
 }

@@ -1,0 +1,6 @@
+# WBS 3.3.2 — keep secrets, dependencies and private payment receipts out of Git.
+.env
+.env.*
+!.env.example
+node_modules/
+uploads/

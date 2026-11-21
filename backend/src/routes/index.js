@@ -4,6 +4,7 @@ router.use('/auth', require('./auth'));
 router.use('/client/account', require('./client-account'));
 router.use('/client/bookings', require('./client-bookings'));
 router.use('/client/appointments', require('./client-appointments'));
+router.use('/client/payments', require('./client-payments'));
 router.use('/users', require('./users'));
 router.use('/packages', require('./packages'));
 router.use('/appointments', require('./appointments'));
