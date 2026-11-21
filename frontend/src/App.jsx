@@ -37,6 +37,7 @@ import AdminActivityLogs from "./pages/admin/ActivityLogs";
 import AdminSettings from "./pages/admin/Settings";
 import AdminScanner from "./pages/admin/Scanner";
 import PhotoSessions from "./pages/admin/PhotoSessions";
+import StaffPhotoSessions from "./pages/staff/PhotoSessions";
 import StaffScanner from "./pages/staff/Scanner";
 import AdminPosts from "./pages/admin/Posts";
 import AdminStaff from "./pages/admin/Staff";
@@ -88,7 +89,7 @@ export default function App() {
       <Route path="/staff/dashboard" element={<StaffDashboard />} />
       <Route path="/staff/appointments" element={<StaffAppointments />} />
       <Route path="/staff/scanner" element={<StaffScanner />} />
-      <Route path="/staff/photo-sessions" element={<PhotoSessions />} />
+      <Route path="/staff/photo-sessions" element={<StaffPhotoSessions />} />
       <Route path="/staff/clients" element={<StaffClients />} />
       <Route path="/staff/posts" element={<StaffPosts />} />
       <Route path="/staff/feedback" element={<StaffFeedback />} />
