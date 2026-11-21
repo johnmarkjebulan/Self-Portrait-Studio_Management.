@@ -135,11 +135,16 @@ export default function StaffDashboard() {
         <div role="status" className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading staff dashboard…</div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <SummaryCard label="Today's appointments" value={view.todays.length} note="Scheduled for today" />
             <SummaryCard label="Waiting or checked in" value={view.waiting.length} note="Clients awaiting a session" />
             <SummaryCard label="Live sessions" value={view.live.length} note="Currently taking pictures" />
             <SummaryCard label="Completed today" value={view.completed.length} note="Sessions marked completed" />
+            <SummaryCard
+              label="My assigned sessions"
+              value={view.assigned.length}
+              note="Sessions assigned to me today"
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
