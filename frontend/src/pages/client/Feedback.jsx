@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { appointmentsApi, feedbackApi } from "../../services/api";
+import { clientAppointmentsApi, clientFeedbackApi } from "../../services/api";
 import { useToast } from "../../contexts/ToastContext";
 import { FEEDBACK_CATEGORIES as categories, RATING_LABELS as ratingLabels, missingFeedbackRatings } from "../../utils/feedbackRatings";
 
@@ -41,7 +41,7 @@ export default function ClientFeedback() {
     setLoading(true);
     setLoadError("");
     const [appointmentResult, feedbackResult] = await Promise.allSettled([
-      appointmentsApi.getAll(), feedbackApi.getAll(),
+      clientAppointmentsApi.getAll(), clientFeedbackApi.getAll(),
     ]);
     const failures = [];
     if (appointmentResult.status === "fulfilled") {
@@ -85,7 +85,7 @@ export default function ClientFeedback() {
     setFormError("");
     try {
       // The legacy optional overall_satisfaction field is intentionally NOT sent.
-      await feedbackApi.create({ ...form, comment: form.comment.trim(), appointment_id: form.appointment_id || null });
+      await clientFeedbackApi.create({ ...form, comment: form.comment.trim(), appointment_id: form.appointment_id || null });
       toast("Thank you! Your feedback was sent.", "success");
       setForm(emptyForm());
       await load();
@@ -117,7 +117,7 @@ export default function ClientFeedback() {
             <option value="">General Studio Feedback</option>
             {options.map((item) => <option key={item.id} value={item.id}>{item.tracking_number} · {item.package?.name || "Session"} · {item.date}</option>)}
           </select>
-          <p className="text-xs text-gray-400 mt-2">Completed appointments can be reviewed once. General feedback can be sent anytime.</p>
+          <p className="text-xs text-gray-400 mt-2">Completed appointments can be reviewed once. General feedback requires a comment. You can review each completed appointment once.</p>
         </div>
         <div className="mb-6">
           <p className="text-xs uppercase tracking-wider text-gray-500 block mb-3">Overall Rating</p>
@@ -136,7 +136,7 @@ export default function ClientFeedback() {
           <textarea id="feedback-comment" rows={5} maxLength={4000} value={form.comment} onChange={(event) => setForm((old) => ({ ...old, comment: event.target.value }))} placeholder="Share your experience, suggestions, or concerns…" className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-3 text-sm resize-none outline-none focus:border-amber-400" />
         </div>
         {formError && <div role="alert" className="mb-4 text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-4 py-3">{formError}</div>}
-        <button disabled={saving} type="submit" className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl text-sm font-semibold disabled:opacity-60 pose-action">{saving ? "Sending…" : "Send Feedback"}</button>
+        <button disabled={saving || loading} type="submit" className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl text-sm font-semibold disabled:opacity-60 pose-action">{saving ? "Sending…" : "Send Feedback"}</button>
       </form>
       <h2 className="font-semibold text-gray-900 mb-4">My Feedback</h2>
       {loading ? <p className="text-sm text-gray-500">Loading feedback…</p> : feedback.length === 0 ? (

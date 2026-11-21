@@ -331,3 +331,9 @@ export const clientNotificationsApi = {
   markRead: (id) => req('PATCH', `/client/notifications/${encodeURIComponent(id)}/read`),
   markAllRead: () => req('POST', '/client/notifications/mark-all-read'),
 };
+
+// WBS 3.4.2: Client-owned feedback, separate from Admin/Staff feedback moderation.
+export const clientFeedbackApi = {
+  getAll: () => req('GET', '/client/feedback').then((r) => r.feedback || []),
+  create: (data) => req('POST', '/client/feedback', data).then((r) => r.feedback),
+};
