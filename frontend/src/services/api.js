@@ -164,6 +164,13 @@ export const availabilityApi = {
   getMonth: (month) => req('GET', `/availability?month=${encodeURIComponent(month)}`).then((r) => r.availability),
 };
 
+// WBS 3.2.1: Client-only booking API. Admin/Staff routes stay unchanged.
+export const clientBookingApi = {
+  getDateAvailability: (date) => req('GET', `/client/bookings/availability?date=${encodeURIComponent(date)}`).then((r) => r.availability),
+  getMonthAvailability: (month) => req('GET', `/client/bookings/availability?month=${encodeURIComponent(month)}`).then((r) => r.availability),
+  create: (data) => req('POST', '/client/bookings', data).then((r) => normalizeAppointment(r.appointment)),
+};
+
 export const appointmentsApi = {
   getAll: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
