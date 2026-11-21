@@ -9,6 +9,7 @@ const { authenticate } = require('../middleware/auth');
 const { dateKeyInTimeZone, dateTimeInStudioZone, isValidDateKey, isValidTime } = require('../utils/dateTime');
 const { getDateAvailability, getMonthAvailability, assertSlotAvailable } = require('../utils/availability');
 const { notifyAdmins } = require('../utils/notifyAdmins');
+const { describeClientAvailability, updateClientMonthToday } = require('../utils/clientAvailability');
 
 router.use(authenticate, (req, res, next) => {
   if (req.user?.role !== 'client') {
@@ -22,10 +23,17 @@ router.use(authenticate, (req, res, next) => {
 router.get('/availability', async (req, res, next) => {
   try {
     if (typeof req.query?.date === 'string' && req.query.date) {
-      return res.json({ availability: await getDateAvailability(req.query.date) });
+      const date = req.query.date;
+      const availability = await getDateAvailability(date);
+      return res.json({ availability: describeClientAvailability(availability, date) });
     }
     if (typeof req.query?.month === 'string' && req.query.month) {
-      return res.json({ availability: await getMonthAvailability(req.query.month) });
+      const month = req.query.month;
+      const monthly = await getMonthAvailability(month);
+      const today = dateKeyInTimeZone();
+      if (month !== today.slice(0, 7)) return res.json({ availability: monthly });
+      const todayAvailability = describeClientAvailability(await getDateAvailability(today), today);
+      return res.json({ availability: updateClientMonthToday(monthly, todayAvailability, today) });
     }
     return res.status(400).json({ error: 'Provide a date or month to check availability.' });
   } catch (err) { return next(err); }
@@ -108,7 +116,7 @@ router.post('/', async (req, res, next) => {
 
       // Recheck availability at save-time, not just when the Client picks a slot.
       const availability = await getDateAvailability(input.date, { transaction });
-      assertSlotAvailable(availability, input.time);
+      assertSlotAvailable(describeClientAvailability(availability, input.date), input.time);
 
       const totalCents = moneyCents(pkg.price) + addons.reduce((sum, addon) => sum + moneyCents(addon.price), 0);
       const rate = Number(settings.down_payment_value || 0);

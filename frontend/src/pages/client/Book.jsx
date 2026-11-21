@@ -135,7 +135,7 @@ function PackageStep({ selected, onSelect }) {
 
 // ── Schedule Step ─────────────────────────────────────────────────────────
 
-function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }) {
+function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime, refreshToken, onRefresh }) {
   const now = new Date();
   const todayKey = studioToday();
   const [currentMonth, setCurrentMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -143,6 +143,7 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
   const [selectedAvailability, setSelectedAvailability] = useState(null);
   const [loadingCal, setLoadingCal] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
 
   const year = currentMonth.getFullYear();
   const monthIndex = currentMonth.getMonth();
@@ -159,10 +160,14 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
         if (!active) return;
         setMonthDays(Object.fromEntries((result.days || []).map((day) => [day.date, day])));
       })
-      .catch(() => { if (active) setMonthDays({}); })
+      .catch(() => {
+        if (!active) return;
+        setMonthDays({});
+        setAvailabilityError("Could not load the studio calendar. Try Refresh availability.");
+      })
       .finally(() => { if (active) setLoadingCal(false); });
     return () => { active = false; };
-  }, [monthKey]);
+  }, [monthKey, refreshToken]);
 
   useEffect(() => {
     if (!selectedDate) {
@@ -171,12 +176,25 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
     }
     let active = true;
     setLoadingSlots(true);
+    setSelectedAvailability(null);
+    setAvailabilityError("");
     clientBookingApi.getDateAvailability(selectedDate)
-      .then((result) => { if (active) setSelectedAvailability(result); })
-      .catch(() => { if (active) setSelectedAvailability(null); })
+      .then((result) => {
+        if (!active) return;
+        setSelectedAvailability(result);
+        if (selectedTime && !result.slots?.some(slot => slot.time === selectedTime && slot.available)) {
+          onSelectTime("");
+          setAvailabilityError("That slot is no longer available. Please select another time.");
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        setSelectedAvailability(null);
+        setAvailabilityError(err.message || "Could not refresh available time slots.");
+      })
       .finally(() => { if (active) setLoadingSlots(false); });
     return () => { active = false; };
-  }, [selectedDate]);
+  }, [selectedDate, refreshToken]);
 
   const isCurrentOrPastMonth = monthKey <= todayKey.slice(0, 7);
   const prevMonth = () => {
@@ -190,6 +208,11 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-1">Select Date & Time</h2>
         <p className="text-gray-500 text-sm">Availability comes directly from studio hours, capacity, bookings, and Admin schedule overrides.</p>
+        <button type="button" onClick={onRefresh} disabled={loadingCal || loadingSlots}
+          className="mt-3 text-xs font-semibold underline text-gray-700 hover:text-gray-900 disabled:opacity-50">
+          Refresh availability
+        </button>
+        {availabilityError && <p role="alert" className="mt-2 text-sm text-red-600">{availabilityError}</p>}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-5">
@@ -230,7 +253,8 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
               const dotColor = status === "full" ? "bg-red-400" : status === "limited" ? "bg-yellow-400" : status === "available" ? "bg-emerald-400" : "";
               return (
                 <button type="button" key={day} disabled={disabled}
-                  onClick={() => { onSelectDate(dateStr); onSelectTime(""); }}
+                  title={disabled ? (dateStr < todayKey ? "Past date" : status === "full" ? "Fully booked" : "Studio closed") : "Choose this date"}
+                  onClick={() => { setAvailabilityError(""); onSelectDate(dateStr); onSelectTime(""); }}
                   className={`min-h-[46px] sm:min-h-[52px] rounded-lg sm:rounded-xl flex flex-col items-center justify-center text-xs transition-all ${isSel ? "bg-gray-900 text-white font-semibold" : `${statusClass} ${disabled ? "cursor-not-allowed" : "cursor-pointer font-medium"}`}`}>
                   <span>{day}</span>
                   {!isSel && dotColor && <span className={`w-1.5 h-1.5 rounded-full mt-1 ${dotColor}`} />}
@@ -259,8 +283,10 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
           </div>
           {loadingSlots ? (
             <div className="text-sm text-gray-400 py-5">Loading time slots…</div>
-          ) : !selectedAvailability || selectedAvailability.slots.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No studio time slots are available for this date.</div>
+          ) : !selectedAvailability ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Availability could not be confirmed. Refresh before continuing.</div>
+          ) : selectedAvailability.closed || selectedAvailability.slots.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">The studio is closed or has no time slots on this date.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {selectedAvailability.slots.map((slot) => {
@@ -270,7 +296,7 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
                     className={`min-h-[52px] px-3 py-2 rounded-xl border-2 text-sm text-center transition-all font-semibold ${isSel ? "border-gray-900 bg-gray-900 text-white" : slot.available ? "border-gray-200 bg-white hover:border-gray-400 text-gray-800" : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"}`}>
                     <span className="block">{slot.time}</span>
                     <span className={`block text-[10px] mt-0.5 ${isSel ? "text-white/70" : slot.available ? "text-gray-400" : "text-gray-300"}`}>
-                      {slot.blocked ? "Blocked" : slot.available ? `${slot.remaining} left` : "Full"}
+                      {slot.reason === "elapsed" || slot.reason === "past" ? "Time passed" : slot.reason === "blocked" ? "Blocked" : slot.reason === "closed" ? "Closed" : slot.available ? `${slot.remaining} left` : "Fully booked"}
                     </span>
                   </button>
                 );
@@ -545,6 +571,9 @@ export default function BookingWizard() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [createdAppt, setCreatedAppt] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [availabilityRefresh, setAvailabilityRefresh] = useState(0);
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
@@ -581,7 +610,33 @@ export default function BookingWizard() {
     return true;
   };
 
-  const handleNext = () => {
+  const verifySelectedTime = async () => {
+    const data = await clientBookingApi.getDateAvailability(selectedDate);
+    const slot = data.slots?.find(item => item.time === selectedTime);
+    if (data.closed || data.full || !slot?.available) {
+      setSelectedTime("");
+      setBookingError("The selected date or time is now unavailable. Choose another slot.");
+      setAvailabilityRefresh(value => value + 1);
+      setStep(1);
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = async () => {
+    if (step === 1) {
+      if (!selectedDate || !selectedTime || checkingAvailability) return;
+      setCheckingAvailability(true);
+      setBookingError("");
+      try {
+        if (!(await verifySelectedTime())) return;
+      } catch (err) {
+        setBookingError(err.message || "Could not verify availability. Try again.");
+        return;
+      } finally {
+        setCheckingAvailability(false);
+      }
+    }
     if (step === 2) {
       const e = {};
       if (numPeople < 1) e.numPeople = "At least 1 person required.";
@@ -595,9 +650,12 @@ export default function BookingWizard() {
 
   const handleCreateAppointment = async () => {
     if (!user || !selectedPackage || !selectedDate || !selectedTime) return;
+    if (submitting) return;
     setSubmitting(true);
+    setBookingError("");
 
     try {
+      if (!(await verifySelectedTime())) return;
       const appt = await clientBookingApi.create({
         package_id: selectedPackage.id,
         date: selectedDate,
@@ -611,6 +669,14 @@ export default function BookingWizard() {
       setStep(5);
       toast("Booking saved. Payment is pending studio verification.", "success");
     } catch (err) {
+      if (err.status === 409) {
+        setSelectedTime("");
+        setStep(1);
+        setAvailabilityRefresh(value => value + 1);
+        setBookingError("Another booking or studio schedule change made that slot unavailable. Please select a new time.");
+      } else {
+        setBookingError(err.message || "Failed to create booking. Please try again.");
+      }
       toast(err.message || "Failed to create booking. Please try again.", "error");
     } finally {
       setSubmitting(false);
@@ -661,7 +727,9 @@ export default function BookingWizard() {
           selectedDate={selectedDate}
           selectedTime={selectedTime}
           onSelectDate={setSelectedDate}
-          onSelectTime={setSelectedTime}
+          onSelectTime={(time) => { setSelectedTime(time); setBookingError(""); }}
+          refreshToken={availabilityRefresh}
+          onRefresh={() => setAvailabilityRefresh(value => value + 1)}
         />
       );
     }
@@ -687,6 +755,7 @@ export default function BookingWizard() {
 
       <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 card-shadow">
         <StepIndicator current={step} />
+        {bookingError && <div role="alert" className="mb-5 border border-red-200 bg-red-50 rounded-xl p-3 text-sm text-red-700">{bookingError}</div>}
         <div className="min-h-[360px]">
           {renderStep()}
         </div>
@@ -703,10 +772,10 @@ export default function BookingWizard() {
             {step < 4 ? (
               <button
                 onClick={handleNext}
-                disabled={!canNext()}
+                disabled={!canNext() || checkingAvailability}
                 className="w-full sm:w-auto px-6 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:opacity-40 text-white font-semibold rounded-xl text-sm transition-colors"
               >
-                Next
+                {checkingAvailability ? "Checking slot…" : "Next"}
               </button>
             ) : (
               <button
