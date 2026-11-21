@@ -37,7 +37,7 @@ import AdminActivityLogs from "./pages/admin/ActivityLogs";
 import AdminSettings from "./pages/admin/Settings";
 import AdminScanner from "./pages/admin/Scanner";
 import PhotoSessions from "./pages/admin/PhotoSessions";
-import StaffScanner from "./pages/admin/Scanner";
+import StaffScanner from "./pages/staff/Scanner";
 import AdminPosts from "./pages/admin/Posts";
 import AdminStaff from "./pages/admin/Staff";
 
