@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { appointmentsApi, packagesApi, settingsApi } from "../../services/api";
+import { clientAppointmentsApi, packagesApi, settingsApi } from "../../services/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
-import { studioToday, studioAppointmentDate } from "../../utils/date";
+import { studioAppointmentDate } from "../../utils/date";
 
 export default function ClientAppointments() {
   const { user } = useAuth();
@@ -21,7 +21,7 @@ export default function ClientAppointments() {
     if (!user) return;
     try {
       const [appts, addonsData, studioSettings] = await Promise.allSettled([
-        appointmentsApi.getAll(),
+        clientAppointmentsApi.getAll(),
         packagesApi.getAddons(),
         settingsApi.get(),
       ]);
@@ -39,7 +39,7 @@ export default function ClientAppointments() {
 
   useEffect(() => {
     load();
-    const poll = window.setInterval(() => { if (!document.hidden) appointmentsApi.getAll().then((rows) => setAppointments(rows.sort((a,b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))))).catch(() => {}); }, 20000);
+    const poll = window.setInterval(() => { if (!document.hidden) clientAppointmentsApi.getAll().then((rows) => setAppointments(rows.sort((a,b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))))).catch(() => {}); }, 20000);
     return () => window.clearInterval(poll);
   }, [user]);
 
@@ -48,44 +48,19 @@ export default function ClientAppointments() {
       "rescheduled", "checked_in", "waiting", "now_serving"].includes(a.status)
   );
   const past = appointments.filter(a =>
-    ["completed", "cancelled", "no_show"].includes(a.status)
+    ["completed", "cancelled", "no_show", "rejected"].includes(a.status)
   );
 
-  const getQueueInfo = (appt) => {
-    if (!appt.queue_number) return null;
-    const today = studioToday();
-    if (appt.date !== today) return null;
-    const todayQueue = appointments.filter(a => a.date === today && a.queue_number);
-    const nowServing = todayQueue.find(a => a.status === "now_serving");
-    const myPos = todayQueue.findIndex(a => a.id === appt.id);
-    const ahead = myPos > 0 ? todayQueue.slice(0, myPos).filter(a => !["completed", "cancelled", "no_show"].includes(a.status)).length : 0;
-    return {
-      queueNumber: appt.queue_number,
-      nowServingNum: nowServing?.queue_number ?? null,
-      isNowServing: appt.status === "now_serving",
-      ahead,
-      estimated: ahead * 45,
-    };
-  };
+  // Queue numbers/counts come from the server; never inspect other Clients' bookings.
+  const getQueueInfo = (appt) => appt.queue || null;
 
-  const canCancel = (appt) => {
-    if (!["pending", "confirmed", "rescheduled"].includes(appt.status)) return false;
-    const apptDateTime = studioAppointmentDate(appt.date, appt.time);
-    const hoursUntil = (apptDateTime.getTime() - Date.now()) / 3_600_000;
-    return hoursUntil > settings.cancellation_hours;
-  };
-
-  const canReschedule = (appt) => {
-    if (!["confirmed", "rescheduled"].includes(appt.status)) return false;
-    const apptDateTime = studioAppointmentDate(appt.date, appt.time);
-    const hoursUntil = (apptDateTime.getTime() - Date.now()) / 3_600_000;
-    return hoursUntil > settings.reschedule_hours;
-  };
+  const canCancel = (appt) => appt.request_policy?.can_cancel === true;
+  const canReschedule = (appt) => appt.request_policy?.can_reschedule === true;
 
   const handleCancelRequest = async (appt) => {
     if (!user) return;
     try {
-      await appointmentsApi.update(appt.id, { status: "cancellation_requested", cancellation_reason: actionNote });
+      await clientAppointmentsApi.requestCancellation(appt.id, actionNote);
       toast("Cancellation request submitted. An admin will review it shortly.", "info");
       setConfirmAction(null);
       setActionNote("");
@@ -98,7 +73,7 @@ export default function ClientAppointments() {
   const handleRescheduleRequest = async (appt) => {
     if (!user) return;
     try {
-      await appointmentsApi.update(appt.id, { status: "reschedule_requested", reschedule_reason: actionNote });
+      await clientAppointmentsApi.requestReschedule(appt.id, actionNote);
       toast("Reschedule request submitted. An admin will reach out to arrange a new date.", "info");
       setConfirmAction(null);
       setActionNote("");
@@ -239,7 +214,7 @@ export default function ClientAppointments() {
                     { label: "Your Number", value: `#${queueInfo.queueNumber}`, highlight: true },
                     { label: "Taking Pictures", value: queueInfo.nowServingNum !== null ? `#${queueInfo.nowServingNum}` : "—", highlight: false },
                     { label: "Ahead of You", value: String(queueInfo.ahead), highlight: false },
-                    { label: "Est. Wait", value: queueInfo.ahead === 0 ? "—" : `~${queueInfo.estimated} min`, highlight: false },
+                    { label: "Queue Status", value: queueInfo.isNowServing ? "Active" : "Waiting", highlight: false },
                   ].map(({ label, value, highlight }) => (
                     <div key={label} className="text-center">
                       <div className={`text-xl font-bold font-mono ${highlight ? (queueInfo.isNowServing ? "text-emerald-700" : "text-purple-700") : "text-gray-800"}`}>{value}</div>
