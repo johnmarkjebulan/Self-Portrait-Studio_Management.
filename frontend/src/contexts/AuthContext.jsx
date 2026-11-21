@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { authApi, setToken } from "../services/api";
+import { authApi, clientAccountApi, setToken } from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -108,7 +108,9 @@ export function AuthProvider({ children }) {
   };
 
   const updateProfile = async (data) => {
-    const { user: updatedUser } = await authApi.updateProfile(data);
+    const { user: updatedUser } = user?.role === "client"
+      ? await clientAccountApi.updateProfile(data)
+      : await authApi.updateProfile(data);
     localStorage.setItem("sp_current_user", JSON.stringify(updatedUser));
     setUser(updatedUser);
     return updatedUser;

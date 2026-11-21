@@ -130,6 +130,19 @@ export const authApi = {
   changePassword: (currentPassword, newPassword) => req('PATCH', '/auth/password', { currentPassword, newPassword }),
 };
 
+// WBS 3.1.2: client-only endpoints. The Admin/Staff auth API remains unchanged.
+export const clientAccountApi = {
+  getOverview: () => req('GET', '/client/account/overview').then((data) => ({
+    ...data,
+    nextSession: normalizeAppointment(data.nextSession),
+    queueSession: normalizeAppointment(data.queueSession),
+    paymentReminder: normalizeAppointment(data.paymentReminder),
+    recentBookings: (data.recentBookings || []).map(normalizeAppointment),
+  })),
+  updateProfile: (data) => req('PATCH', '/client/account/profile', data),
+  changePassword: (currentPassword, newPassword) => req('PATCH', '/client/account/password', { currentPassword, newPassword }),
+};
+
 export const packagesApi = {
   getAll: (adminMode = false) => req('GET', adminMode ? '/packages/admin/all' : '/packages').then((r) => r.packages.map(normalizePackage)),
   find: (id) => req('GET', `/packages/${id}`).then((r) => normalizePackage(r.package)),
