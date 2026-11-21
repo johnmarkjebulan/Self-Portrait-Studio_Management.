@@ -171,6 +171,15 @@ export const clientBookingApi = {
   create: (data) => req('POST', '/client/bookings', data).then((r) => normalizeAppointment(r.appointment)),
 };
 
+// WBS 3.3.1: Client-owned history, signed QR and request endpoints.
+// Do not route Client actions through Admin/Staff /appointments API.
+export const clientAppointmentsApi = {
+  getAll: () => req('GET', '/client/appointments').then(r => (r.appointments || []).map(normalizeAppointment)),
+  find: (id) => req('GET', `/client/appointments/${encodeURIComponent(id)}`).then(r => normalizeAppointment(r.appointment)),
+  requestCancellation: (id, reason) => req('POST', `/client/appointments/${encodeURIComponent(id)}/request-cancellation`, { reason }),
+  requestReschedule: (id, reason) => req('POST', `/client/appointments/${encodeURIComponent(id)}/request-reschedule`, { reason }),
+};
+
 export const appointmentsApi = {
   getAll: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

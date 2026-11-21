@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../../contexts/AuthContext";
-import { appointmentsApi } from "../../services/api";
+import { clientAppointmentsApi } from "../../services/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 
 const TABS = [
@@ -161,19 +161,25 @@ export default function ClientBookings() {
   const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [tab, setTab] = useState("upcoming");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!user) return;
     async function load() {
+      setLoading(true);
+      setError("");
       try {
-        const appts = await appointmentsApi.getAll();
+        const appts = await clientAppointmentsApi.getAll();
         setAppointments(appts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
       } catch (err) {
-        console.error(err);
+        setError(err.message || "Could not load booking history. Please refresh to retry.");
+      } finally {
+        setLoading(false);
       }
     }
     load();
-    const poll = window.setInterval(() => { if (!document.hidden) appointmentsApi.getAll().then(setAppointments).catch(() => {}); }, 20000);
+    const poll = window.setInterval(() => { if (!document.hidden) clientAppointmentsApi.getAll().then(setAppointments).catch(() => {}); }, 20000);
     return () => window.clearInterval(poll);
   }, [user]);
 
@@ -212,6 +218,9 @@ export default function ClientBookings() {
         </Link>
       </div>
 
+      {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {loading && <div role="status" className="mb-5 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">Loading your booking history...</div>}
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
         {TABS.map(t => (
@@ -232,7 +241,7 @@ export default function ClientBookings() {
       </div>
 
       {/* Booking cards */}
-      {filtered.length === 0 ? (
+      {!loading && !error && filtered.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
