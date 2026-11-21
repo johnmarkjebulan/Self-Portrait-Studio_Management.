@@ -1,13 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { QRCodeSVG } from "qrcode.react";
-import { packagesApi, appointmentsApi, settingsApi, paymentsApi, availabilityApi } from "../../services/api";
+import { packagesApi, settingsApi, clientBookingApi } from "../../services/api";
 import { studioToday } from "../../utils/date";
-import StudioPaymentQR from "../../components/common/StudioPaymentQR";
 
-const STEP_LABELS = ["Package", "Date & Time", "Details", "Add-ons", "Summary", "Payment", "Confirmation"];
+const STEP_LABELS = ["Package", "Date & Time", "Details", "Add-ons", "Summary", "Confirmation"];
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -82,6 +81,11 @@ function PackageStep({ selected, onSelect }) {
         <h2 className="text-lg font-semibold text-gray-900 mb-1">Choose a Package</h2>
         <p className="text-gray-500 text-sm">Select the photography package that best fits your needs.</p>
       </div>
+      {packages.length === 0 && (
+        <div className="text-center text-sm text-gray-500 bg-gray-50 rounded-xl border border-gray-200 px-4 py-7">
+          No photography packages are available yet. Please check again after the studio publishes its packages.
+        </div>
+      )}
       {packages.map((pkg) => (
         <button
           key={pkg.id}
@@ -150,7 +154,7 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
   useEffect(() => {
     let active = true;
     setLoadingCal(true);
-    availabilityApi.getMonth(monthKey)
+    clientBookingApi.getMonthAvailability(monthKey)
       .then((result) => {
         if (!active) return;
         setMonthDays(Object.fromEntries((result.days || []).map((day) => [day.date, day])));
@@ -167,7 +171,7 @@ function ScheduleStep({ selectedDate, selectedTime, onSelectDate, onSelectTime }
     }
     let active = true;
     setLoadingSlots(true);
-    availabilityApi.getDate(selectedDate)
+    clientBookingApi.getDateAvailability(selectedDate)
       .then((result) => { if (active) setSelectedAvailability(result); })
       .catch(() => { if (active) setSelectedAvailability(null); })
       .finally(() => { if (active) setLoadingSlots(false); });
@@ -466,190 +470,6 @@ function SummaryStep({ pkg, selectedDate, selectedTime, numPeople, specialReques
   );
 }
 
-// ── Payment Step ───────────────────────────────────────────────────────────
-
-function PaymentStep({ appt, settings, onComplete }) {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const fileRef = useRef(null);
-  const [form, setForm] = useState({
-    amount: String(appt.down_payment || appt.remaining_balance || ""),
-    reference: "",
-    payment_date: studioToday(),
-    proof: null,
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState({});
-
-  const validate = () => {
-    const e = {};
-    const amt = parseFloat(form.amount);
-    if (!form.amount || isNaN(amt) || amt <= 0) e.amount = "Enter a valid amount.";
-    else if (amt > appt.remaining_balance) e.amount = `Amount exceeds balance of ₱${appt.remaining_balance.toLocaleString()}.`;
-    if (!form.reference.trim()) e.reference = "Reference number is required.";
-    if (!form.payment_date) e.payment_date = "Payment date is required.";
-    if (!form.proof) e.proof = "Upload a screenshot of your transaction.";
-    else if (form.proof.size > 5 * 1024 * 1024) e.proof = "Payment proof must be 5 MB or smaller.";
-    return e;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-    if (!user) return;
-    setSubmitting(true);
-
-    try {
-      const amt = parseFloat(form.amount);
-
-      await paymentsApi.create({
-        appointment_id: appt.id,
-        client_id: user.id,
-        amount: amt,
-        type: "down_payment",
-        reference_number: form.reference,
-        payment_date: form.payment_date,
-        proof: form.proof,
-        status: "payment_submitted",
-      });
-
-      toast("Payment submitted! Awaiting admin verification.", "success");
-      onComplete();
-    } catch (err) {
-      toast(err.message || "Failed to submit payment. Try again.", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const paymentNumber = settings?.qr_gcash_number || settings?.qr_paymaya_number || "";
-  const studioName = settings?.studio_name || "Pose and Pics Photography Studio";
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">Pay Down Payment</h2>
-        <p className="text-gray-500 text-sm">
-          Use the studio's verified payment QR image or official payment details, then upload the transaction screenshot.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* QR Code panel */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col items-center gap-4">
-          <div className="text-xs text-gray-500 uppercase tracking-wider font-medium self-start">Official Studio Payment QR</div>
-          <StudioPaymentQR />
-          <div className="text-center">
-            {paymentNumber && <div className="font-mono text-lg font-bold text-gray-900">{paymentNumber}</div>}
-            <div className="text-gray-500 text-sm">{studioName}</div>
-            <p className="text-xs text-gray-500 mt-2">Confirm the recipient name inside your e-wallet before paying.</p>
-          </div>
-          <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-relaxed">
-            <strong>Use your tracking number as reference:</strong>
-            <br />
-            <span className="tracking-number text-amber-900 font-semibold">{appt.tracking_number}</span>
-          </div>
-        </div>
-
-        {/* Form */}
-        <div className="flex flex-col gap-5">
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm">
-            <div className="flex justify-between mb-1.5">
-              <span className="text-gray-500">Total Booking</span>
-              <span className="font-mono text-gray-900">₱{appt.total_price.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between font-semibold pt-1.5 border-t border-gray-200">
-              <span className="text-gray-900">Down Payment Due</span>
-              <span className="text-gray-900 font-mono">₱{(appt.down_payment || appt.remaining_balance).toLocaleString()}</span>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <label className="text-gray-500 text-xs uppercase tracking-wider block mb-2">Amount Paid (₱)</label>
-              <input
-                type="number"
-                value={form.amount}
-                min="1"
-                onChange={(e) => { setForm((f) => ({ ...f, amount: e.target.value })); setErrors({}); }}
-                className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
-              />
-              {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
-            </div>
-
-            <div>
-              <label className="text-gray-500 text-xs uppercase tracking-wider block mb-2">Transaction / Reference Number</label>
-              <input
-                type="text"
-                value={form.reference}
-                placeholder="TXN1234567890"
-                onChange={(e) => { setForm((f) => ({ ...f, reference: e.target.value })); setErrors({}); }}
-                className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 placeholder:text-gray-400 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
-              />
-              {errors.reference && <p className="text-red-500 text-xs mt-1">{errors.reference}</p>}
-            </div>
-
-            <div>
-              <label className="text-gray-500 text-xs uppercase tracking-wider block mb-2">Payment Date</label>
-              <input
-                type="date"
-                value={form.payment_date}
-                max={studioToday()}
-                onChange={(e) => { setForm((f) => ({ ...f, payment_date: e.target.value })); setErrors({}); }}
-                className="w-full bg-gray-50 border border-gray-200 focus:border-gray-400 text-gray-900 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
-              />
-              {errors.payment_date && <p className="text-red-500 text-xs mt-1">{errors.payment_date}</p>}
-            </div>
-
-            <div>
-              <label className="text-gray-500 text-xs uppercase tracking-wider block mb-2">Transaction Screenshot</label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${form.proof ? "border-gray-400 bg-gray-50" : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"}`}
-              >
-                {form.proof ? (
-                  <div>
-                    <p className="text-gray-900 text-sm font-medium">{form.proof.name}</p>
-                    <p className="text-gray-500 text-xs mt-0.5">{(form.proof.size / 1024).toFixed(0)} KB</p>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-gray-500 text-sm">Click to upload screenshot</p>
-                    <p className="text-gray-400 text-xs mt-0.5">JPG, PNG · Max 5MB</p>
-                  </div>
-                )}
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    if (f.size > 5 * 1024 * 1024) { toast("File too large. Max 5MB.", "error"); return; }
-                    setForm((prev) => ({ ...prev, proof: f }));
-                    setErrors((prev) => { const n = { ...prev }; delete n.proof; return n; });
-                  }}
-                />
-              </div>
-              {errors.proof && <p className="text-red-500 text-xs mt-1">{errors.proof}</p>}
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl text-sm transition-colors"
-            >
-              {submitting ? "Submitting…" : "Submit Payment Proof"}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Confirmation Step ──────────────────────────────────────────────────────
 
 function ConfirmationStep({ appt }) {
@@ -669,8 +489,8 @@ function ConfirmationStep({ appt }) {
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-2">Booking Submitted!</h2>
         <p className="text-gray-500 text-sm max-w-sm mx-auto">
-          Your booking and payment proof have been submitted. Our team will verify your payment
-          and confirm your appointment within 24 hours.
+          Your booking request is saved. Payment is still required before the studio can confirm your session.
+          Keep your tracking number for reference.
         </p>
       </div>
 
@@ -679,6 +499,7 @@ function ConfirmationStep({ appt }) {
         <div className="tracking-number text-xl font-bold text-gray-900 mb-4">{appt.tracking_number}</div>
         <div className="text-gray-500 text-sm mb-1">{dateDisplay}</div>
         <div className="text-gray-500 text-sm">{appt.time}</div>
+        <div className="text-sm text-amber-700 mt-3">Payment pending · Required down payment: ₱{Number(appt.down_payment || 0).toLocaleString()}</div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col items-center gap-3 w-full max-w-xs">
@@ -690,16 +511,16 @@ function ConfirmationStep({ appt }) {
 
       <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
         <button
-          onClick={() => navigate("/client/appointments")}
+          onClick={() => navigate("/client/dashboard")}
           className="flex-1 bg-gray-900 hover:bg-gray-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
-          View Appointment
+          View Dashboard
         </button>
         <button
-          onClick={() => navigate("/client/dashboard")}
+          onClick={() => navigate("/client/book")}
           className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold py-3 rounded-xl text-sm transition-colors"
         >
-          Dashboard
+          New Booking
         </button>
       </div>
     </div>
@@ -777,7 +598,7 @@ export default function BookingWizard() {
     setSubmitting(true);
 
     try {
-      const appt = await appointmentsApi.create({
+      const appt = await clientBookingApi.create({
         package_id: selectedPackage.id,
         date: selectedDate,
         time: selectedTime,
@@ -788,7 +609,7 @@ export default function BookingWizard() {
 
       setCreatedAppt(appt);
       setStep(5);
-      toast("Booking created! Please pay your down payment.", "info");
+      toast("Booking saved. Payment is pending studio verification.", "success");
     } catch (err) {
       toast(err.message || "Failed to create booking. Please try again.", "error");
     } finally {
@@ -797,16 +618,7 @@ export default function BookingWizard() {
   };
 
   const renderStep = () => {
-    if (step === 6 && createdAppt) return <ConfirmationStep appt={createdAppt} />;
-    if (step === 5 && createdAppt) {
-      return (
-        <PaymentStep
-          appt={createdAppt}
-          settings={settings}
-          onComplete={() => setStep(6)}
-        />
-      );
-    }
+    if (step === 5 && createdAppt) return <ConfirmationStep appt={createdAppt} />;
     if (step === 4 && selectedPackage && selectedDate && selectedTime) {
       return (
         <SummaryStep
