@@ -1,6 +1,6 @@
 const path = require('node:path');
 
-const PROOFS_DIR = path.resolve(__dirname, '../../uploads/payment-proofs');
+const PROOFS_DIR = path.join(process.env.UPLOADS_DIR || path.resolve(__dirname, '../../uploads'), 'payment-proofs');
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 
 function imageExtension(buffer) {

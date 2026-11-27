@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { imageExtension } = require('./paymentProof');
-const QR_DIR = path.resolve(__dirname, '../../uploads/studio');
+const QR_DIR = path.join(process.env.UPLOADS_DIR || path.resolve(__dirname, '../../uploads'), 'studio');
 const STEM = 'official-payment-qr';
 const ALLOWED = ['.jpg', '.png', '.webp'];
 

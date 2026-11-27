@@ -1,0 +1,14 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {queueSnapshot,startQueueError}=require('../src/utils/liveQueue');
+const {issueReset,verifyReset,matchesVersion,sessionVersion}=require('../src/utils/passwordReset');
+const {resetConfig}=require('../src/services/passwordResetMail');
+const {formatStudioTime,dateTimeInStudioZone}=require('../src/utils/dateTime');
+const now=Date.parse('2026-11-28T02:00:00Z');
+const rows=[{id:'c',status:'waiting',queue_number:3,package:{duration:40}},{id:'a',status:'now_serving',queue_number:1,service_end_at:new Date(now+20*60000)},{id:'b',status:'waiting',queue_number:2,package:{duration:30}},{id:'d',status:'completed',queue_number:0}];
+test('live queue uses all active clients, skips completed, estimates package durations',()=>{const q=queueSnapshot(rows,now);assert.deepEqual(q.get('c'),{queueNumber:3,nowServingNumbers:[1],activeCount:1,isNowServing:false,ahead:2,estimated:50});assert.equal(q.get('a').ahead,0);assert.equal(q.get('b').estimated,20);assert.equal(q.has('d'),false);});
+test('queue next and single active session enforced',()=>{assert.match(startQueueError(rows,rows[2]),/Another client is taking pictures/);const waiting=rows.filter(r=>r.id!=='a');assert.equal(startQueueError(waiting,rows[2]),null);assert.match(startQueueError(waiting,rows[0]),/ahead in the queue/);});
+test('overdue active session does not promise a false waiting time',()=>{assert.equal(queueSnapshot(rows,now+21*60000).get('b').estimated,null);});
+test('password reset tokens invalidate after password changes and reject wrong signing key',()=>{const secret='test-secret-not-a-real-production-password';const user={id:'a',password_hash:'original'};const token=issueReset(user,secret);const data=verifyReset(token,secret);assert.equal(matchesVersion(data,user,secret),true);assert.equal(matchesVersion(data,{...user,password_hash:'changed'},secret),false);assert.throws(()=>verifyReset(token,'other-secret'));assert.notEqual(sessionVersion('original',secret),sessionVersion('changed',secret));});
+test('reset email requires configured trusted HTTPS destination',()=>{assert.equal(resetConfig({}),null);assert.equal(resetConfig({BREVO_API_KEY:'example',BREVO_SENDER_EMAIL:'a@example.com',PASSWORD_RESET_BASE_URL:'http://example.com'}),null);assert.equal(resetConfig({BREVO_API_KEY:'example',BREVO_SENDER_EMAIL:'a@example.com',PASSWORD_RESET_BASE_URL:'https://example.com'}).base,'https://example.com');});
+test('AM/PM booking times and UTC-to-Manila notification timestamps',async()=>{const d=await import('../../frontend/src/utils/date.js');assert.equal(formatStudioTime('14:05'),'2:05 PM');assert.equal(d.formatStudioTime('00:00'),'12:00 AM');assert.equal(d.formatStudioTime('12:00'),'12:00 PM');assert.match(d.formatStudioTimestamp('2026-11-27T16:15:00Z'),/Nov 28, 2026.*12:15 AM/);assert.equal(dateTimeInStudioZone('2026-11-28','14:05:00').toISOString(),'2026-11-28T06:05:00.000Z');});

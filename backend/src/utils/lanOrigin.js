@@ -4,7 +4,7 @@ function isTrustedDevelopmentLanOrigin(origin, environment = process.env.NODE_EN
   if (environment === 'production') return false;
   try {
     const url = new URL(origin);
-    if (url.protocol !== 'http:' || url.port !== '5173' || url.username || url.password) return false;
+    if (!['http:', 'https:'].includes(url.protocol) || url.port !== '5173' || url.username || url.password) return false;
     const host = url.hostname;
     if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return true;
     const octets = host.split('.').map(Number);

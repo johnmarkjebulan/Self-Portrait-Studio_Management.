@@ -1,3 +1,4 @@
+import { formatStudioTime, formatStudioTimestamp } from "../../utils/date";
 import { useState, useEffect } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { activityLogsApi } from "../../services/api";
@@ -173,7 +174,7 @@ export default function ActivityLogs() {
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                     {log.created_at
-                      ? new Date(log.created_at).toLocaleString()
+                      ? formatStudioTimestamp(log.created_at)
                       : "—"}
                   </td>
                 </tr>

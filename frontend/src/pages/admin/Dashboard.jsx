@@ -1,3 +1,6 @@
+import { formatStudioTime } from "../../utils/date";
+import DashboardWelcome from "../../components/common/DashboardWelcome";
+import SessionClock from "../../components/common/SessionClock";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { appointmentsApi, paymentsApi, usersApi } from "../../services/api";
@@ -40,8 +43,8 @@ export default function AdminDashboard() {
         .reduce((s, p) => s + p.amount, 0);
 
       const upcomingAppts = appts.filter(a =>
-        a.date > today && ["confirmed", "pending"].includes(a.status)
-      ).sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+        a.date > today && ["confirmed", "pending", "rescheduled"].includes(a.status)
+      ).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
       const pendingPays = appts
         .filter(a => ["payment_required", "payment_submitted", "under_verification"].includes(a.payment_status))
@@ -67,8 +70,11 @@ export default function AdminDashboard() {
       setUpcoming(upcomingAppts.slice(0, 5));
       setPendingPaymentsList(pendingPays);
     }
-    load();
-  }, []);
+    const refresh=()=>load().catch(console.error);
+    refresh();
+    const timer=setInterval(()=>{if(!document.hidden)refresh()},20000);
+    return ()=>clearInterval(timer);
+  }, [today]);
 
   const nowServing = queue.find(a => a.status === "now_serving");
   const waiting = queue.filter(a => a.status === "waiting");
@@ -76,10 +82,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-7">
-        <h1 className="font-display text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">Overview of studio operations and today's activity.</p>
-      </div>
+      <DashboardWelcome role="admin"/>
 
       {/* 5 Key stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
@@ -130,7 +133,7 @@ export default function AdminDashboard() {
                   <p className="text-emerald-700 text-xs font-semibold uppercase tracking-wider">Now Serving</p>
                 </div>
                 <p className="tracking-number text-lg font-bold text-gray-900">{nowServing.tracking_number}</p>
-                <p className="text-gray-500 text-xs mt-0.5">{nowServing.package?.name} · #{nowServing.queue_number}</p>
+                <p className="text-gray-500 text-xs mt-0.5">{nowServing.package?.name} · #{nowServing.queue_number}</p><SessionClock appointment={nowServing}/>
               </div>
             ) : (
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
@@ -146,7 +149,7 @@ export default function AdminDashboard() {
                     <div key={a.id} className={`flex items-center justify-between py-2 ${i > 0 ? "border-t border-gray-50" : ""}`}>
                       <div>
                         <p className="tracking-number text-xs text-gray-700 font-medium">{a.tracking_number}</p>
-                        <p className="text-gray-400 text-xs">{a.time} · {a.package?.name}</p>
+                        <p className="text-gray-400 text-xs">{formatStudioTime(a.time)} · {a.package?.name}</p>
                       </div>
                       <StatusBadge status={a.status} />
                     </div>
@@ -212,7 +215,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="min-w-0">
                         <p className="text-gray-900 text-sm font-medium truncate">{appt.client?.name || "—"}</p>
-                        <p className="text-gray-400 text-xs">{appt.package?.name} · {appt.time}</p>
+                        <p className="text-gray-400 text-xs">{appt.package?.name} · {formatStudioTime(appt.time)}</p>
                       </div>
                     </div>
                     <StatusBadge status={appt.status} />
@@ -238,7 +241,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-gray-900 font-mono font-semibold text-sm">₱{appt.remaining_balance.toLocaleString()}</p>
-                      <StatusBadge status={appt.payment_status} />
+                      <StatusBadge type="payment" status={appt.payment_status} />
                     </div>
                   </div>
                 ))}

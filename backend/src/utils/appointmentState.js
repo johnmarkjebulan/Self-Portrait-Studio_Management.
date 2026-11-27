@@ -4,7 +4,7 @@ const ADMIN_TRANSITIONS = {
   cancellation_requested: ['cancelled', 'confirmed'],
   reschedule_requested: ['rescheduled', 'confirmed'],
   rescheduled: ['confirmed', 'waiting', 'now_serving', 'cancelled', 'no_show'],
-  checked_in: ['waiting', 'no_show'], // legacy compatibility
+  checked_in: ['waiting', 'now_serving', 'no_show'], // legacy compatibility
   waiting: ['now_serving', 'cancelled', 'no_show'],
   now_serving: ['completed', 'cancelled'],
   completed: [],

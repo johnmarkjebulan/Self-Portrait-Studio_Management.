@@ -14,7 +14,7 @@ function dateKeyInTimeZone(date = new Date(), timeZone = STUDIO_TIME_ZONE) {
 function dateTimeInStudioZone(dateString, timeString = '00:00') {
   // Philippines has a fixed UTC+08:00 offset. Keep date-only values from drifting
   // through UTC conversions while still producing a real Date for policy checks.
-  return new Date(`${dateString}T${timeString}:00+08:00`);
+  return new Date(`${dateString}T${String(timeString).slice(0,5)}:00+08:00`);
 }
 
 function isValidDateKey(value) {
@@ -53,7 +53,15 @@ function hoursUntilAppointment(dateString, timeString) {
   return (dateTimeInStudioZone(dateString, timeString).getTime() - Date.now()) / 3600000;
 }
 
+function formatStudioTime(value) {
+  const [h,m] = String(value || "").split(":");
+  const hour = Number(h);
+  if (!h || !m || !Number.isInteger(hour) || hour < 0 || hour > 23) return "—";
+  return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
 module.exports = {
+  formatStudioTime,
   STUDIO_TIME_ZONE,
   dateKeyInTimeZone,
   dateTimeInStudioZone,

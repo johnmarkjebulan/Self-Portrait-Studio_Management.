@@ -1,3 +1,4 @@
+import { formatStudioTime, formatStudioTimestamp } from "../../utils/date";
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { useAuth } from "../../contexts/AuthContext";
@@ -121,13 +122,13 @@ export default function BookingScanner() {
     setWorking(true);
     setError("");
     try {
-      const updated = action === "start"
+      const updated = action === "queue" ? await appointmentsApi.update(booking.id, { status: "waiting" }) : action === "start"
         ? await appointmentsApi.startSession(booking.id, method)
         : await appointmentsApi.completeSession(booking.id, method);
       setBooking(updated);
       setConfirming("");
       setHistory(await appointmentsApi.scanHistory(updated.id).catch(() => []));
-      toast(action === "start" ? "Session started — Taking Pictures is visible to Client, Admin and Staff." : "Photo session completed.", "success");
+      toast(action === "queue" ? `Checked in — Queue #${updated.queue_number}` : action === "start" ? "Session started — Taking Pictures is visible to Client, Admin and Staff." : "Photo session completed.", "success");
     } catch (err) {
       setError(err.message || "Unable to update this session.");
       const fresh = await appointmentsApi.find(booking.id).catch(() => null);
@@ -144,7 +145,7 @@ export default function BookingScanner() {
   return <div className="animate-fade-in max-w-3xl mx-auto">
     <div className="mb-6">
       <h1 className="text-2xl font-semibold text-gray-900">QR Booking Check-In</h1>
-      <p className="text-sm text-gray-500 mt-1">{user?.role === "staff" ? "Staff" : "Admin"} scanner · Scan, verify booking details, then confirm <strong>Start Photo Session</strong>. Scanning alone does not start the session.</p>
+      <p className="text-sm text-gray-500 mt-1">{user?.role === "staff" ? "Staff" : "Admin"} scanner · Scan, verify booking details, then choose <strong>Add to Queue</strong> or <strong>Start Photo Session</strong>. Scanning alone does not start the session.</p>
     </div>
     {!booking && <div className="space-y-4">
       <div className="bg-gray-950 rounded-2xl overflow-hidden relative aspect-video flex items-center justify-center">
@@ -174,21 +175,23 @@ export default function BookingScanner() {
         <p className="text-xs font-semibold uppercase tracking-wider mb-2">{isOngoing ? "● Taking Pictures — photo session active" : booking.status === "completed" ? "✓ Session Completed" : "Booking Found — Verify Details"}</p>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="tracking-number text-xl sm:text-2xl font-bold">{booking.tracking_number}</h2>
-          <div className="flex items-center gap-2 flex-wrap"><StatusBadge status={booking.status} /><StatusBadge status={booking.payment_status} /></div>
+          <div className="flex items-center gap-2 flex-wrap"><StatusBadge status={booking.status} /><StatusBadge type="payment" status={booking.payment_status} /></div>
         </div>
         <p className="text-gray-600 text-sm mt-2">{booking.client?.name || "Client"} · {booking.package?.name || "Photography session"}</p>
       </div>
       <div className="bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 grid grid-cols-2 gap-5">
         <div><p className="text-xs text-gray-400 mb-1">Session Date</p><p className="font-semibold text-sm">{booking.date}</p></div>
-        <div><p className="text-xs text-gray-400 mb-1">Schedule</p><p className="font-semibold text-sm">{booking.time}</p></div>
+        <div><p className="text-xs text-gray-400 mb-1">Schedule</p><p className="font-semibold text-sm">{formatStudioTime(booking.time)}</p></div>
         <div><p className="text-xs text-gray-400 mb-1">Guests</p><p className="font-semibold text-sm">{booking.num_people}</p></div>
         <div><p className="text-xs text-gray-400 mb-1">Verified Amount Paid</p><p className="font-semibold text-sm">₱{Number(booking.amount_paid || 0).toLocaleString()}</p></div>
-        {booking.service_start_at && <div className="col-span-2"><p className="text-xs text-gray-400 mb-1">Session Started</p><p className="font-semibold text-sm">{new Date(booking.service_start_at).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" })}</p></div>}
+        {booking.service_start_at && <div className="col-span-2"><p className="text-xs text-gray-400 mb-1">Session Started</p><p className="font-semibold text-sm">{formatStudioTimestamp(booking.service_start_at)}</p></div>}
       </div>
       {!startEligible && !isOngoing && booking.status !== "completed" && <div className="bg-orange-50 text-orange-800 border border-orange-200 p-4 rounded-xl text-sm">
         {booking.date !== today ? `This booking is scheduled for ${booking.date}. It cannot start today.` : !READY.includes(booking.status) ? "Only confirmed bookings can start a photo session." : "Admin must verify the required down payment before the session can start."}
       </div>}
       {(startEligible || canComplete) && <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+        {booking.queue_number && <p className="font-semibold text-sm">Queue #{booking.queue_number}</p>}
+        {startEligible && ["confirmed","rescheduled","checked_in"].includes(booking.status) && confirming === "" && <button type="button" onClick={()=>changeSession("queue")} disabled={working} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-semibold text-sm disabled:opacity-50">Add to Queue</button>}
         {confirming === "" ? <button type="button" onClick={()=>setConfirming(isOngoing ? "complete" : "start")} disabled={working} className="w-full bg-gray-900 hover:bg-gray-800 text-white rounded-xl py-3 font-semibold text-sm disabled:opacity-50">{isOngoing ? "Complete Photo Session" : "Start Photo Session"}</button> : <>
           <p className="text-sm font-medium">{confirming === "start" ? `Confirm that ${booking.client?.name || 'this client'} is ready to start taking pictures?` : `Mark ${booking.tracking_number} as Session Completed?`}</p>
           <div className="flex gap-2"><button type="button" disabled={working} onClick={()=>changeSession(confirming)} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3 py-3 text-sm font-semibold disabled:opacity-50">{working ? "Saving..." : "Yes, Confirm"}</button><button type="button" onClick={()=>setConfirming("")} className="px-5 border border-gray-200 rounded-xl text-sm font-semibold">Cancel</button></div>
@@ -196,7 +199,7 @@ export default function BookingScanner() {
       </div>}
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
         <h3 className="font-semibold text-sm mb-3">Scan / Session History</h3>
-        {history.length === 0 ? <p className="text-sm text-gray-400">No scan activity yet.</p> : <div className="space-y-3 max-h-52 overflow-auto">{history.map((h)=><div key={h.id} className="border-b border-gray-100 last:border-b-0 pb-2 text-xs flex flex-wrap justify-between gap-2"><div><p className="font-medium capitalize text-gray-800">{h.event.replace(/_/g," ")} · {h.method.toUpperCase()}</p><p className="text-gray-500">{h.actor?.name || "Team member"} ({h.actor?.role || "staff"})</p></div><p className="text-gray-500">{new Date(h.created_at).toLocaleString("en-PH", { timeZone:"Asia/Manila" })}</p></div>)}</div>}
+        {history.length === 0 ? <p className="text-sm text-gray-400">No scan activity yet.</p> : <div className="space-y-3 max-h-52 overflow-auto">{history.map((h)=><div key={h.id} className="border-b border-gray-100 last:border-b-0 pb-2 text-xs flex flex-wrap justify-between gap-2"><div><p className="font-medium capitalize text-gray-800">{h.event.replace(/_/g," ")} · {h.method.toUpperCase()}</p><p className="text-gray-500">{h.actor?.name || "Team member"} ({h.actor?.role || "staff"})</p></div><p className="text-gray-500">{formatStudioTimestamp(h.created_at)}</p></div>)}</div>}
       </div>
       <button type="button" onClick={reset} className="w-full border border-gray-200 bg-white rounded-xl px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">Scan Another Booking</button>
     </div>}

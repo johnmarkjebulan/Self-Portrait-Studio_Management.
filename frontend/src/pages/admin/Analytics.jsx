@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { analyticsApi } from "../../services/api";
+import { studioToday, studioMonthStart } from "../../utils/date";
 import {
   LineChart,
   Line,
@@ -39,24 +40,28 @@ function StatCard({ label, value, sub }) {
 }
 
 export default function AdminAnalytics() {
-  const [range, setRange] = useState("month");
+  const [from, setFrom] = useState(studioMonthStart);
+  const [to, setTo] = useState(studioToday);
+  const [range, setRange] = useState(() => ({ from: studioMonthStart(), to: studioToday() }));
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const valid = Boolean(from && to && from <= to);
 
   useEffect(() => {
+    let active = true;
     setData(null);
     setError(null);
-    analyticsApi.get(range)
-      .then((d) => setData(d))
-      .catch((e) => setError(e.message || "Failed to load analytics."));
+    setLoading(true);
+    analyticsApi.get(range.from, range.to)
+      .then(d => { if (active) setData(d); })
+      .catch(e => { if (active) setError(e.message || "Failed to load analytics."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [range]);
 
-  const rangeOptions = [
-    { value: "today", label: "Today" },
-    { value: "week", label: "This Week" },
-    { value: "month", label: "This Month" },
-    { value: "year", label: "This Year" },
-  ];
+  const formatDate = value => new Intl.DateTimeFormat('en-PH', {dateStyle:'medium', timeZone:'UTC'}).format(new Date(value + 'T00:00:00Z'));
+  const chartPeriod = data?.range?.granularity === 'month' ? 'Monthly' : 'Daily';
 
   return (
     <div className="animate-fade-in">
@@ -66,25 +71,22 @@ export default function AdminAnalytics() {
             Analytics
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Real-time studio performance metrics.
+            View studio performance for your selected dates.
           </p>
         </div>
-        <div className="flex gap-2 overflow-x-auto max-w-full pb-1">
-          {rangeOptions.map((o) => (
-            <button
-              key={o.value}
-              onClick={() => setRange(o.value)}
-              className={`px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
-                range === o.value
-                  ? "bg-gray-900 text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
       </div>
+      <form onSubmit={event => { event.preventDefault(); if (valid && !loading) setRange({from,to}); }} className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 mb-5 card-shadow">
+        <div className="text-sm font-semibold text-gray-900 mb-1">Custom date range</div>
+        <p className="text-xs text-gray-500 mb-4">Choose any start and end date. Both dates are included (Philippine time).</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+          <label className="block min-w-0 text-xs font-medium text-gray-600">From<input type="date" required value={from} max={to || undefined} onChange={e=>setFrom(e.target.value)} className="mt-1 block w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900" /></label>
+          <label className="block min-w-0 text-xs font-medium text-gray-600">To<input type="date" required value={to} min={from || undefined} onChange={e=>setTo(e.target.value)} className="mt-1 block w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900" /></label>
+          <button type="submit" disabled={!valid || loading} className="w-full lg:w-auto rounded-xl bg-[#795449] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#654239] disabled:opacity-50">{loading ? 'Loading…' : 'Apply date range'}</button>
+        </div>
+        {!valid && <p role="alert" className="mt-2 text-xs text-red-700">Choose a From date on or before the To date.</p>}
+      </form>
+      <p className="mb-5 text-sm text-gray-600">Showing <strong>{formatDate(range.from)} – {formatDate(range.to)}</strong></p>
+      <p className="mb-5 text-xs text-gray-500">Appointments use scheduled dates; revenue uses payment verification dates; new clients and feedback use creation dates. Statuses reflect current records, not historical snapshots.</p>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-6">
@@ -92,7 +94,7 @@ export default function AdminAnalytics() {
         </div>
       )}
 
-      {!data && !error && (
+      {loading && !error && (
         <div className="flex items-center justify-center py-24 text-gray-400 text-sm">
           Loading analytics…
         </div>
@@ -131,7 +133,7 @@ export default function AdminAnalytics() {
             <StatCard
               label="Capacity Utilization"
               value={`${data.capacityUtilization ?? 0}%`}
-              sub="Last 14 days"
+              sub="Selected date range"
             />
             <StatCard
               label="Pending Requests"
@@ -140,11 +142,11 @@ export default function AdminAnalytics() {
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mb-8 [&>*]:min-w-0">
             {/* Daily Appointments */}
             <div className="bg-white rounded-2xl border border-gray-200 card-shadow p-4 sm:p-6">
               <h3 className="font-semibold text-gray-900 text-sm mb-5">
-                Daily Appointments (Last 14 Days)
+                {chartPeriod} Appointments
               </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={data.daily || []}>
@@ -169,7 +171,7 @@ export default function AdminAnalytics() {
             {/* Daily Revenue */}
             <div className="bg-white rounded-2xl border border-gray-200 card-shadow p-4 sm:p-6">
               <h3 className="font-semibold text-gray-900 text-sm mb-5">
-                Daily Revenue (Last 14 Days)
+                {chartPeriod} Revenue
               </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={data.daily || []}>

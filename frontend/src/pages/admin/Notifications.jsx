@@ -1,3 +1,4 @@
+import { formatStudioTime, formatStudioTimestamp } from "../../utils/date";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { notificationLink } from "../../utils/notificationLink";
@@ -138,7 +139,7 @@ export default function Notifications() {
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
                     {n.created_at
-                      ? new Date(n.created_at).toLocaleString()
+                      ? formatStudioTimestamp(n.created_at)
                       : ""}
                   </div>
                 </div>

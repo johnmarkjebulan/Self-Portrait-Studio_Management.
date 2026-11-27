@@ -1,0 +1,64 @@
+# Paid resources. Review the price in Render before approving the Blueprint.
+services:
+  - type: pserv
+    name: pose-pics-mysql
+    runtime: docker
+    region: singapore
+    plan: 1c-2g
+    dockerfilePath: ./deploy/mysql.Dockerfile
+    autoDeployTrigger: 'off'
+    disk:
+      name: mysql-data
+      mountPath: /var/lib/mysql
+      sizeGB: 5
+    envVars:
+      - key: MYSQL_DATABASE
+        value: pose_and_pics
+      - key: MYSQL_USER
+        value: pose_app
+      - key: MYSQL_PASSWORD
+        generateValue: true
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
+  - type: web
+    name: pose-pics-studio
+    runtime: node
+    region: singapore
+    plan: 0.5c-512mb
+    autoDeployTrigger: 'off'
+    buildCommand: npm ci --include=dev && npm run test:backend && npm run build
+    startCommand: node deploy/start-cloud.cjs
+    healthCheckPath: /health
+    disk:
+      name: studio-uploads
+      mountPath: /var/data/pose-pics
+      sizeGB: 5
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: pose-pics-mysql
+          property: host
+      - key: DB_PORT
+        value: '3306'
+      - key: DB_NAME
+        value: pose_and_pics
+      - key: DB_USER
+        value: pose_app
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: pose-pics-mysql
+          envVarKey: MYSQL_PASSWORD
+      - key: JWT_SECRET
+        generateValue: true
+      - key: UPLOADS_DIR
+        value: /var/data/pose-pics
+      - key: AUTO_COMPLETE_SESSIONS
+        value: 'false'

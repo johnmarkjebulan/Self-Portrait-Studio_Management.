@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { sessionVersion } = require('../utils/passwordReset');
 
 // Recheck active account and current role for each request. This immediately
 // revokes access when an Admin disables staff, even if their JWT has not expired.
@@ -11,8 +12,9 @@ async function authenticate(req, res, next) {
   try {
     if (!payload?.id) return res.status(401).json({error: 'Invalid authentication token'});
     const { User } = require('../models');
-    const user = await User.findByPk(payload.id, { attributes: ['id','name','email','role','is_active'] });
+    const user = await User.findByPk(payload.id, { attributes: ['id','name','email','role','is_active','password_hash'] });
     if (!user || !user.is_active) return res.status(401).json({ error: 'This account is inactive or no longer exists. Please log in again.' });
+    if (payload.version !== sessionVersion(user.password_hash)) return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
     req.user = { id: user.id, role: user.role, name: user.name, email: user.email };
     next();
   } catch(err) { next(err); }

@@ -1,23 +1,12 @@
+import BookingDialog from "../../components/common/BookingDialog";
+import { formatStudioTime, studioToday } from "../../utils/date";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import BookingToolbar from "../../components/common/BookingToolbar";
+import { matchesBookingGroup, sortBookings, searchBooking, BOOKING_LABELS, BOOKING_GROUPS } from "../../utils/bookingView";
 import { appointmentsApi, availabilityApi } from "../../services/api.js";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { useToast } from "../../contexts/ToastContext";
-
-const ALL_STATUSES = [
-  "all",
-  "pending",
-  "confirmed",
-  "checked_in",
-  "waiting",
-  "now_serving",
-  "completed",
-  "cancelled",
-  "no_show",
-  "cancellation_requested",
-  "reschedule_requested",
-  "rescheduled",
-  "rejected",
-];
 
 function statusBorderColor(status) {
   const map = {
@@ -41,7 +30,12 @@ export default function Appointments() {
   const { showToast } = useToast();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("status") || "all";
+  const statusFilter = BOOKING_GROUPS.some(g=>g.value===requested) || Object.hasOwn(BOOKING_LABELS,requested) ? requested : "all";
+  const setStatusFilter = value => setParams(value === "all" ? {} : {status:value}, {replace:true});
+  const [dateFilter,setDateFilter]=useState("");
+  const [order,setOrder]=useState("schedule");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -95,17 +89,14 @@ export default function Appointments() {
     return () => { active = false; };
   }, [showRescheduleInput, rescheduleData.date, selected?.id]);
 
-  const filtered = appointments.filter((a) => {
-    const matchesStatus = statusFilter === "all" || a.status === statusFilter;
-    const q = search.toLowerCase();
-    const matchesSearch =
-      !q ||
-      (a.tracking_number || "").toLowerCase().includes(q) ||
-      (a.client?.name || "").toLowerCase().includes(q);
-    return matchesStatus && matchesSearch;
-  });
+  const filtered = sortBookings(appointments.filter(a => matchesBookingGroup(a,statusFilter) && searchBooking(a,search) && (!dateFilter || a.date===dateFilter)),order);
 
   async function doAction(id, status, extra = {}) {
+    if (actionLoading) return;
+    if (status === "waiting" && appointments.find(a=>a.id===id)?.date !== studioToday()) {
+      showToast("Check-in is only available on the appointment date.", "error");
+      return;
+    }
     setActionLoading(true);
     try {
       await appointmentsApi.update(id, { status, ...extra });
@@ -158,7 +149,8 @@ export default function Appointments() {
         {["confirmed", "rescheduled"].includes(s) && (
           <button
             onClick={() => doAction(appt.id, "waiting")}
-            disabled={actionLoading}
+            disabled={actionLoading || appt.date !== studioToday()}
+            title={appt.date !== studioToday() ? "Check-in is available on the appointment date" : "Check in client"}
             className="w-full py-2 rounded bg-cyan-600 text-white font-medium hover:bg-cyan-700 disabled:opacity-50"
           >
             Check In
@@ -202,7 +194,7 @@ export default function Appointments() {
                 >
                   <option value="">{rescheduleLoading ? "Loading times…" : "Select available time"}</option>
                   {rescheduleSlots.map((slot) => (
-                    <option key={slot.time} value={slot.time}>{slot.time} ({slot.remaining} left)</option>
+                    <option key={slot.time} value={slot.time}>{formatStudioTime(slot.time)} ({slot.remaining} left)</option>
                   ))}
                 </select>
                 <button
@@ -244,35 +236,8 @@ export default function Appointments() {
 
   return (
     <div className="max-w-screen-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Appointments</h1>
-
-      {/* Status Filter Tabs */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {ALL_STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
-              statusFilter === s
-                ? "bg-gray-900 text-white border-gray-900"
-                : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"
-            }`}
-          >
-            {s === "all" ? "All" : s.replace(/_/g, " ")}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by tracking number or client name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      <div className="mb-5"><h1 className="text-3xl font-semibold">Bookings</h1><p className="text-sm text-gray-500 mt-1">One workspace for appointment requests, scheduled sessions and booking history.</p></div>
+      <BookingToolbar rows={appointments} filter={statusFilter} setFilter={setStatusFilter} search={search} setSearch={setSearch} date={dateFilter} setDate={setDateFilter} order={order} setOrder={setOrder} total={filtered.length}/>
 
       <div className="flex flex-col xl:flex-row gap-6">
         {/* Table */}
@@ -284,7 +249,7 @@ export default function Appointments() {
               No appointments found
             </div>
           ) : (
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full text-sm border-collapse responsive-booking-table">
               <thead>
                 <tr className="bg-gray-50 text-left text-gray-500 uppercase text-xs">
                   <th className="px-3 py-3 font-semibold">Tracking #</th>
@@ -311,10 +276,10 @@ export default function Appointments() {
                       selected?.id === appt.id ? "bg-blue-50" : ""
                     }`}
                   >
-                    <td className="px-3 py-3 font-mono text-xs text-gray-700">
+                    <td data-label="Tracking #" className="px-3 py-3 font-mono text-xs text-gray-700">
                       {appt.tracking_number}
                     </td>
-                    <td className="px-3 py-3">
+                    <td data-label="Client" className="px-3 py-3">
                       <div className="font-medium text-gray-800">
                         {appt.client?.name || "—"}
                       </div>
@@ -322,25 +287,25 @@ export default function Appointments() {
                         {appt.client?.email || ""}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-gray-700">
+                    <td data-label="Package" className="px-3 py-3 text-gray-700">
                       {appt.package?.name || "—"}
                     </td>
-                    <td className="px-3 py-3 text-gray-700">
+                    <td data-label="Date" className="px-3 py-3 text-gray-700">
                       {appt.date || "—"}
                     </td>
-                    <td className="px-3 py-3 text-gray-700">
-                      {appt.time || "—"}
+                    <td data-label="Time" className="px-3 py-3 text-gray-700">
+                      {formatStudioTime(appt.time)}
                     </td>
-                    <td className="px-3 py-3 text-center text-gray-700">
+                    <td data-label="People" className="px-3 py-3 text-center text-gray-700">
                       {appt.num_people ?? "—"}
                     </td>
-                    <td className="px-3 py-3">
-                      <StatusBadge status={appt.payment_status} />
+                    <td data-label="Payment" className="px-3 py-3">
+                      <StatusBadge type="payment" status={appt.payment_status} />
                     </td>
-                    <td className="px-3 py-3">
+                    <td data-label="Status" className="px-3 py-3">
                       <StatusBadge status={appt.status} />
                     </td>
-                    <td className="px-3 py-3">
+                    <td data-label="Actions" className="px-3 py-3">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -362,21 +327,13 @@ export default function Appointments() {
 
         {/* Detail Panel */}
         {selected && (
-          <div className="w-full xl:w-80 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 self-start xl:sticky xl:top-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-800">Appointment Detail</h2>
-              <button
-                onClick={() => setSelected(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg leading-none"
-              >
-                ×
-              </button>
-            </div>
+          <BookingDialog title="Appointment details" onClose={()=>setSelected(null)} busy={actionLoading}>
 
             <div className="font-mono text-lg font-bold text-gray-900 mb-4">
               {selected.tracking_number}
             </div>
 
+            <div className="mb-4"><div className="flex flex-wrap gap-2"><StatusBadge status={selected.status}/><StatusBadge type="payment" status={selected.payment_status}/></div>{renderActions(selected)}</div>
             <div className="space-y-3 text-sm">
               <div>
                 <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
@@ -405,7 +362,7 @@ export default function Appointments() {
                   <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
                     Time
                   </div>
-                  <div>{selected.time || "—"}</div>
+                  <div>{formatStudioTime(selected.time)}</div>
                 </div>
               </div>
 
@@ -442,14 +399,10 @@ export default function Appointments() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge status={selected.status} />
-                <StatusBadge status={selected.payment_status} />
-              </div>
+
             </div>
 
-            {renderActions(selected)}
-          </div>
+          </BookingDialog>
         )}
       </div>
     </div>

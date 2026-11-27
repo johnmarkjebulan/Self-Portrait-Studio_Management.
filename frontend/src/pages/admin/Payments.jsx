@@ -1,3 +1,4 @@
+import BookingDialog from "../../components/common/BookingDialog";
 import { useEffect, useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { paymentsApi } from "../../services/api";
@@ -127,9 +128,9 @@ export default function AdminPayments() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-1 gap-6">
         {/* Table */}
-        <div className="xl:col-span-2 overflow-x-auto">
+        <div className="xl:col-span-1 overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="border-b border-gray-200">
@@ -175,7 +176,7 @@ export default function AdminPayments() {
                       {p.payment_date}
                     </td>
                     <td className="py-3">
-                      <StatusBadge status={p.status} />
+                      <StatusBadge type="payment" status={p.status} />
                     </td>
                   </tr>
                 );
@@ -192,22 +193,7 @@ export default function AdminPayments() {
         </div>
 
         {/* Detail panel */}
-        <div className="xl:col-span-1">
-          {selected ? (
-            <div className="bg-white rounded-2xl border border-gray-200 card-shadow p-5 sticky top-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900 text-sm">
-                  Payment Details
-                </h3>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
+        <>{selected && (<BookingDialog title="Payment details" onClose={()=>setSelected(null)}><div className="space-y-3 text-xs">
                 {[
                   ["Tracking #", selected.appointment?.tracking_number || "—"],
                   ["Client", selected.client?.name || "—"],
@@ -226,7 +212,7 @@ export default function AdminPayments() {
                 ))}
 
                 <div className="flex gap-2 pt-1">
-                  <StatusBadge status={selected.status} />
+                  <StatusBadge type="payment" status={selected.status} />
                 </div>
 
                 {/* Appointment balance */}
@@ -339,13 +325,8 @@ export default function AdminPayments() {
                   )}
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-gray-200 card-shadow p-8 text-center text-gray-400 text-sm">
-              Click a payment to review
-            </div>
-          )}
-        </div>
+            </BookingDialog>
+          )}</>
       </div>
     </div>
   );

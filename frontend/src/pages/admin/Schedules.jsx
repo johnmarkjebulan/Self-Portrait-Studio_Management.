@@ -1,3 +1,4 @@
+import { formatStudioTime } from "../../utils/date";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { availabilityApi, schedulesApi } from "../../services/api";
@@ -139,7 +140,7 @@ export default function AdminSchedules() {
   const resetOverride = async (slot) => {
     const existing = overrideByTime.get(slot.time);
     if (!existing) return;
-    if (!window.confirm(`Reset ${slot.time} to the default Settings rules?`)) return;
+    if (!window.confirm(`Reset ${formatStudioTime(slot.time)} to the default Settings rules?`)) return;
     try {
       await schedulesApi.delete(existing.id);
       toast("Schedule override removed. Default rules restored.", "success");
@@ -269,7 +270,7 @@ export default function AdminSchedules() {
                   const status = slotStatus(slot);
                   return (
                     <tr key={slot.time} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
-                      <td className="px-4 py-4 font-mono text-gray-900 font-semibold">{slot.time}</td>
+                      <td className="px-4 py-4 font-mono text-gray-900 font-semibold">{formatStudioTime(slot.time)}</td>
                       <td className="px-4 py-4 text-gray-600">{slot.capacity}</td>
                       <td className="px-4 py-4 text-gray-600">{slot.booked}</td>
                       <td className="px-4 py-4 text-gray-600">{slot.remaining}</td>

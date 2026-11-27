@@ -1,17 +1,19 @@
-// Admin/Staff API registrations only. Client routes will be integrated later.
 const router = require('express').Router();
-router.use('/auth', require('./auth'));
-router.use('/users', require('./users'));
-router.use('/packages', require('./packages'));
-router.use('/appointments', require('./appointments'));
-router.use('/photo-workflows', require('./photo-workflows'));
-router.use('/payments', require('./payments'));
-router.use('/notifications', require('./notifications'));
-router.use('/feedback', require('./feedback'));
-router.use('/posts', require('./posts'));
-router.use('/settings', require('./settings'));
-router.use('/schedules', require('./schedules'));
-router.use('/availability', require('./availability'));
-router.use('/analytics', require('./analytics'));
-router.use('/activity-logs', require('./activity-logs'));
+
+router.use('/auth', require('./identity/auth'));
+router.use('/users', require('./identity/users'));
+router.use('/packages', require('./studio/packages'));
+router.use('/appointments', require('./bookings/appointments'));
+router.use('/photo-workflows', require('./bookings/photo-workflows'));
+router.use('/payments', require('./billing/payments'));
+router.use('/notifications', require('./engagement/notifications'));
+router.use('/feedback', require('./engagement/feedback'));
+router.use('/posts', require('./engagement/posts'));
+router.use('/settings', require('./studio/settings'));
+router.use('/schedules', require('./bookings/schedules'));
+router.use('/availability', require('./bookings/availability'));
+router.use('/analytics', require('./insights/analytics'));
+router.use('/activity-logs', require('./insights/activity-logs'));
+router.use('/public-stats', require('./insights/public-stats'));
+
 module.exports = router;

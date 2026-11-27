@@ -1,3 +1,5 @@
+import { formatStudioTime } from "../../utils/date";
+import SessionClock from "../../components/common/SessionClock";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -15,20 +17,29 @@ export default function AdminQueue() {
   const load = async () => {
     const appts = await appointmentsApi.getAll({ date });
     const filtered = appts
-      .filter(a => !["cancelled", "no_show"].includes(a.status))
+      .filter(a => !["cancelled", "no_show", "rejected"].includes(a.status))
       .sort((a, b) => (a.queue_number || 999) - (b.queue_number || 999) || String(a.time ?? "").localeCompare(String(b.time ?? "")));
     setAppointments(filtered);
   };
 
-  useEffect(() => { load(); }, [date]);
+  useEffect(() => {
+    let active=true;
+    const refresh=()=>appointmentsApi.getAll({date}).then(rows=>{if(active)setAppointments(rows.filter(a=>!["cancelled","no_show","rejected"].includes(a.status)).sort((a,b)=>(a.queue_number||999)-(b.queue_number||999)||String(a.time||"").localeCompare(String(b.time||""))))}).catch(console.error);
+    refresh();const timer=setInterval(()=>{if(!document.hidden)refresh()},5000);
+    return()=>{active=false;clearInterval(timer)};
+  }, [date]);
 
   const nowServing = appointments.find(a => a.status === "now_serving");
-  const waiting = appointments.filter(a => a.status === "waiting");
+  const waiting = appointments.filter(a => ["waiting","checked_in"].includes(a.status));
   const confirmed = appointments.filter(a => ["confirmed", "rescheduled"].includes(a.status));
   const completed = appointments.filter(a => a.status === "completed");
 
   const act = async (action, appt) => {
-    if (!user) return;
+    if (!user || loading) return;
+    if (["add_to_queue", "call_next"].includes(action) && (date !== studioToday() || appt.date !== studioToday())) {
+      toast("Only today’s appointments can join the queue or start a session.", "error");
+      return;
+    }
     setLoading(true);
     try {
       switch (action) {
@@ -45,13 +56,13 @@ export default function AdminQueue() {
           }
           const next = waiting[0];
           if (!next) { toast("No clients in queue.", "info"); return; }
-          await appointmentsApi.update(next.id, { status: "now_serving" });
+          await appointmentsApi.startSession(next.id, "manual");
           toast(`${next.tracking_number} is now Ongoing`, "success");
           break;
 
         case "complete":
           if (appt.status !== "now_serving") { toast("Only the client currently being served can be completed.", "error"); return; }
-          await appointmentsApi.update(appt.id, { status: "completed" });
+          await appointmentsApi.completeSession(appt.id, "manual");
           toast(`${appt.tracking_number} completed`, "success");
           break;
 
@@ -87,25 +98,25 @@ export default function AdminQueue() {
               <span className="tracking-number text-sm font-bold text-gray-900">{appt.tracking_number}</span>
             </div>
             <p className="text-gray-600 text-xs">{client?.name} · {pkg?.name}</p>
-            <p className="text-gray-400 text-xs">{appt.time} · {appt.num_people} {appt.num_people === 1 ? "person" : "people"}</p>
+            <p className="text-gray-400 text-xs">{formatStudioTime(appt.time)} · {appt.num_people} {appt.num_people === 1 ? "person" : "people"}</p>
           </div>
-          <StatusBadge status={appt.status} />
+          <StatusBadge status={appt.status} /><SessionClock appointment={appt}/>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {["confirmed", "rescheduled"].includes(appt.status) && (
-            <button onClick={() => act("add_to_queue", appt)} disabled={loading}
-              className="text-xs bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+            <button onClick={() => act("add_to_queue", appt)} disabled={loading || date !== studioToday() || appt.date !== studioToday()}
+              className="text-xs bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40">
               Add to Queue
             </button>
           )}
-          {appt.status === "waiting" && (
+          {["waiting","checked_in"].includes(appt.status) && (
             <>
-              <button onClick={() => act("call_next", appt)} disabled={loading || !!nowServing}
+              <button onClick={() => act("call_next", appt)} disabled={loading || !!nowServing || waiting[0]?.id !== appt.id || date !== studioToday()}
                 className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40">
                 Start Session
               </button>
-              <button onClick={() => act("no_show", appt)} disabled={loading}
+              <button hidden={user?.role !== "admin"} onClick={() => act("no_show", appt)} disabled={loading}
                 className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100 px-3 py-1.5 rounded-lg transition-colors">
                 No Show
               </button>
@@ -117,7 +128,7 @@ export default function AdminQueue() {
               Mark Complete
             </button>
           )}
-          {!["completed", "cancelled", "no_show"].includes(appt.status) && (
+          {user?.role === "admin" && !["completed", "cancelled", "no_show"].includes(appt.status) && (
             <button onClick={() => act("cancel", appt)} disabled={loading}
               className="text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
               Cancel
@@ -144,7 +155,8 @@ export default function AdminQueue() {
         </div>
       </div>
 
-      {waiting.length > 0 && !nowServing && (
+      {date !== studioToday() && <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Viewing {date}. Check-in and session start are only available on the appointment date.</div>}
+      {waiting.length > 0 && !nowServing && date === studioToday() && (
         <button onClick={() => act("call_next", waiting[0])} disabled={loading}
           className="w-full bg-gray-900 hover:bg-gray-800 disabled:opacity-60 text-white font-semibold py-4 rounded-xl text-base mb-8 transition-colors">
           📢 Start Next Client ({waiting[0].tracking_number})
@@ -156,7 +168,7 @@ export default function AdminQueue() {
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <h2 className="text-gray-900 font-semibold text-sm">Ongoing Session</h2>
-            <span className="text-gray-400 text-xs">({completed.length} done today)</span>
+            <span className="text-gray-400 text-xs">({completed.length} completed)</span>
           </div>
           {nowServing ? (
             <ApptCard appt={nowServing} isPrimary />
@@ -168,7 +180,7 @@ export default function AdminQueue() {
 
           {completed.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-gray-400 text-xs uppercase tracking-wider mb-3">Completed Today</h3>
+              <h3 className="text-gray-400 text-xs uppercase tracking-wider mb-3">Completed on selected date</h3>
               <div className="flex flex-col gap-2">
                 {completed.map(a => (
                   <div key={a.id} className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 flex justify-between items-center opacity-70">
